@@ -13,7 +13,7 @@ CARGO    ?= cargo
 FEATURES ?= --all-features
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build run test lint fmt fmt-check check fixtures clean
+.PHONY: help setup build run server test lint fmt fmt-check check fixtures clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -34,6 +34,13 @@ run: ## Run the app
 	@echo
 	@echo "To exercise the core instead:   make test"
 	@exit 1
+
+server: ## Run the self-hosted sync server locally
+	@test -n "$$MFA_SYNC_TOKEN" || { \
+		echo "Set MFA_SYNC_TOKEN first, e.g.:"; \
+		echo "  export MFA_SYNC_TOKEN=\"\$$(openssl rand -hex 32)\""; \
+		exit 1; }
+	$(CARGO) run --release -p mfa-sync-server
 
 test: ## Run the test suite
 	$(CARGO) test --workspace $(FEATURES)

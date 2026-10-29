@@ -34,4 +34,11 @@ make check     # 格式、clippy、測試，等同 CI 會跑的
 
 平台無關的核心已經完成並通過測試（TOTP、`otpauth://` 解析、Google Authenticator 匯入、vault 格式與加解密、備份、同步合併邏輯），細節見 [crates/mfa-core/README.md](crates/mfa-core/README.md)。
 
+同步可以同時開多個目標（雲端硬碟資料夾、GitHub、GitLab、自架伺服器），自架伺服器見 [crates/mfa-sync-server/README.md](crates/mfa-sync-server/README.md)：只存密文、沒有帳號系統，一組 bearer token。
+
+```sh
+export MFA_SYNC_TOKEN="$(openssl rand -hex 32)"
+make server
+```
+
 規格與實作計劃不進版控，放在 `temp/`（見 `temp/README.md`）。

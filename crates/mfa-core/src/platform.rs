@@ -124,9 +124,14 @@ pub struct RemoteFile<R> {
 /// rather than special.
 ///
 /// `Revision` is whatever the target uses to detect a concurrent write.
-/// [`crate::sync::reconcile_all`] needs it because the sync file is opaque
-/// ciphertext that no target can merge: a write must fail rather than clobber
-/// a revision we have not merged.
+/// A write must fail rather than clobber a revision we have not merged,
+/// because the sync file is opaque ciphertext that no target can merge.
+///
+/// **The core never calls this.** [`crate::sync::reconcile_all`] takes and
+/// returns bytes, so a shell is free to do its networking in its own idiom —
+/// `URLSession`, coroutines, whatever — and this trait is here to say what
+/// that code has to guarantee. Nothing in the core needs to become async for
+/// it. `crates/mfa-sync-server/tests/end_to_end.rs` has the loop written out.
 pub trait SyncProvider {
     type Error;
     type Revision: Clone + PartialEq;

@@ -1,0 +1,6 @@
+target/
+temp/
+docs/
+spike/
+tools/
+.git/

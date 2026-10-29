@@ -7,15 +7,20 @@
 FROM rust:1-slim-bookworm AS build
 WORKDIR /src
 
-# Dependencies first, so a code change does not rebuild the world.
+# Dependencies first, so a code change does not rebuild the world. Every
+# workspace member's manifest has to be here, including the ones this image
+# does not build: cargo refuses to load a workspace with a missing member.
 COPY Cargo.toml Cargo.lock ./
 COPY crates/mfa-core/Cargo.toml crates/mfa-core/
+COPY crates/mfa-ffi/Cargo.toml crates/mfa-ffi/
 COPY crates/mfa-sync-server/Cargo.toml crates/mfa-sync-server/
-RUN mkdir -p crates/mfa-core/src crates/mfa-sync-server/src \
+RUN mkdir -p crates/mfa-core/src crates/mfa-ffi/src/bin crates/mfa-sync-server/src \
  && echo '' > crates/mfa-core/src/lib.rs \
+ && echo '' > crates/mfa-ffi/src/lib.rs \
+ && echo 'fn main() {}' > crates/mfa-ffi/src/bin/uniffi-bindgen.rs \
  && echo 'fn main() {}' > crates/mfa-sync-server/src/main.rs \
  && cargo build --release -p mfa-sync-server \
- && rm -r crates/mfa-core/src crates/mfa-sync-server/src
+ && rm -r crates/mfa-core/src crates/mfa-ffi/src crates/mfa-sync-server/src
 
 COPY crates/ crates/
 # Cargo skips a rebuild when mtimes look unchanged; touch the real sources.

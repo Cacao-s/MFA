@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>MFA</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+
+	<!-- Shown by the OS when the scanner first opens. -->
+	<key>NSCameraUsageDescription</key>
+	<string>MFA uses the camera to scan the QR code a website shows when you turn on two-factor authentication. Nothing is recorded or sent anywhere.</string>
+
+	<!-- Shown by the OS on the unlock prompt. -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>MFA uses Face ID to unlock your verification codes.</string>
+
+	<!-- The vault must never be readable by iTunes/Finder file sharing or by
+	     an iCloud document backup: the key is in the Keychain and the file
+	     is encrypted, but there is no reason to publish the ciphertext. -->
+	<key>UIFileSharingEnabled</key>
+	<false/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<false/>
+</dict>
+</plist>

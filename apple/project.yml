@@ -1,0 +1,71 @@
+# XcodeGen spec. A .pbxproj is a generated blob nobody can review, so the
+# project is described here instead:
+#
+#   brew install xcodegen
+#   cd apple && xcodegen generate && open MFA.xcodeproj
+#
+# The Rust core has to be built first, because both targets link the
+# XCFramework this produces:
+#
+#   ./scripts/build-apple.sh --release
+
+name: MFA
+options:
+  bundleIdPrefix: com.zeyanlin
+  deploymentTarget:
+    iOS: "17.0"
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: NKJSLB6HBR
+    SWIFT_VERSION: "5.9"
+    # Deliberately not `complete`: none of this has been through a compiler
+    # yet, and strict concurrency diagnostics are the kind of thing to tighten
+    # once it builds rather than to guess at. Raise it when it is green.
+    SWIFT_STRICT_CONCURRENCY: minimal
+
+packages: {}
+
+targetTemplates:
+  App:
+    type: application
+    sources:
+      - path: Sources/App
+      - path: Sources/Platform
+      - path: Sources/Sync
+      - path: Sources/Views
+      # The generated Swift bindings are compiled into the app target rather
+      # than imported as a module: UniFFI emits the error enum without
+      # `public`, so from a separate module `MfaError` would be invisible and
+      # nothing could read a failure's kind.
+      - path: ../build/apple/Sources/MfaCore.swift
+        optional: true
+    dependencies:
+      - framework: ../build/apple/MfaCoreFFI.xcframework
+        embed: false
+
+targets:
+  MFA-iOS:
+    templates: [App]
+    platform: iOS
+    sources:
+      - path: Sources/iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.zeyanlin.mfa
+        INFOPLIST_FILE: Resources/Info-iOS.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+  MFA-macOS:
+    templates: [App]
+    platform: macOS
+    sources:
+      - path: Sources/macOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.zeyanlin.mfa
+        INFOPLIST_FILE: Resources/Info-macOS.plist
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_ENTITLEMENTS: Resources/MFA-macOS.entitlements

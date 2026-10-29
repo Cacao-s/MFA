@@ -370,7 +370,7 @@ impl Vault {
     pub fn code_at(&self, id: Uuid, now_secs: u64) -> Result<String> {
         self.get(id)
             .and_then(|entry| entry.account.as_ref())
-            .ok_or(Error::MalformedVault)?
+            .ok_or(Error::NoSuchAccount)?
             .code_at(now_secs)
     }
 
@@ -415,8 +415,8 @@ impl Vault {
             .entries
             .iter_mut()
             .find(|entry| entry.id == id && !entry.deleted)
-            .ok_or(Error::MalformedVault)?;
-        edit(entry.account.as_mut().ok_or(Error::MalformedVault)?);
+            .ok_or(Error::NoSuchAccount)?;
+        edit(entry.account.as_mut().ok_or(Error::NoSuchAccount)?);
         entry.updated_at = now;
         Ok(())
     }
@@ -429,7 +429,7 @@ impl Vault {
             .entries
             .iter_mut()
             .find(|entry| entry.id == id && !entry.deleted)
-            .ok_or(Error::MalformedVault)?;
+            .ok_or(Error::NoSuchAccount)?;
         entry.account = None;
         entry.deleted = true;
         entry.updated_at = now;

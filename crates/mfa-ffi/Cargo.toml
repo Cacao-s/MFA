@@ -1,0 +1,31 @@
+[package]
+name = "mfa-ffi"
+description = "Foreign-function bindings for mfa-core: UniFFI for Swift and Kotlin, a JSON command bus over the C ABI for everything else."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+# cdylib for Android and Windows, staticlib for iOS, lib so the tests can
+# reach the same code the bindings call.
+crate-type = ["cdylib", "staticlib", "lib"]
+name = "mfa_ffi"
+
+[dependencies]
+mfa-core = { version = "0.1.0", path = "../mfa-core" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+uniffi = { version = "0.32.2", features = ["cli"] }
+
+[features]
+default = []
+# Decode a QR code out of an image file or screen grab (desktop).
+qr-image = ["mfa-core/qr-image"]
+
+[[bin]]
+# The generator that produces the Swift and Kotlin bindings. See README.md.
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"

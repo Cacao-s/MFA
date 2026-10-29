@@ -12,8 +12,12 @@ OUT     := build
 CARGO    ?= cargo
 FEATURES ?= --all-features
 
+# The FFI library, whose name differs per platform.
+LIB_EXT  := $(shell [ "$$(uname)" = "Darwin" ] && echo dylib || echo so)
+FFI_LIB  := target/debug/libmfa_ffi.$(LIB_EXT)
+
 .DEFAULT_GOAL := help
-.PHONY: help setup build run server test lint fmt fmt-check check fixtures clean
+.PHONY: help setup build run server bindings test lint fmt fmt-check check fixtures clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -41,6 +45,16 @@ server: ## Run the self-hosted sync server locally
 		echo "  export MFA_SYNC_TOKEN=\"\$$(openssl rand -hex 32)\""; \
 		exit 1; }
 	$(CARGO) run --release -p mfa-sync-server
+
+bindings: ## Generate the Swift and Kotlin bindings for the core
+	$(CARGO) build -p mfa-ffi --lib $(FEATURES)
+	$(CARGO) run -q -p mfa-ffi --bin uniffi-bindgen -- generate \
+		--library $(FFI_LIB) --language swift  --out-dir bindings/swift
+	$(CARGO) run -q -p mfa-ffi --bin uniffi-bindgen -- generate \
+		--library $(FFI_LIB) --language kotlin --out-dir bindings/kotlin
+	@echo
+	@echo "bindings/swift/   and bindings/kotlin/ are generated; do not edit them."
+	@echo "For a packaged build:  ./scripts/build-apple.sh  or  ./scripts/build-android.sh"
 
 test: ## Run the test suite
 	$(CARGO) test --workspace $(FEATURES)

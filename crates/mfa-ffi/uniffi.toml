@@ -1,0 +1,10 @@
+# Names the generated bindings use. `cdylib_name` has to match the `[lib]`
+# name in Cargo.toml, or the generated code looks for the wrong library.
+
+[bindings.swift]
+module_name = "MfaCore"
+cdylib_name = "mfa_ffi"
+
+[bindings.kotlin]
+package_name = "com.zeyanlin.mfa.core"
+cdylib_name = "mfa_ffi"

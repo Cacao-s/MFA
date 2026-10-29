@@ -2,6 +2,10 @@
 
 # Rust
 /target/
+
+# Generated bindings and packaged builds: `make bindings`, scripts/build-*.sh
+/bindings/
+/build/
 **/*.rs.bk
 
 # Working notes, spec and plan drafts — deliberately not version-controlled

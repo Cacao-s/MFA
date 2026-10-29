@@ -83,6 +83,9 @@ pub enum Error {
     #[error("the file contents are not valid MFA vault data")]
     MalformedVault,
 
+    #[error("there is no account with that id")]
+    NoSuchAccount,
+
     #[error("key derivation failed")]
     KeyDerivationFailed,
 

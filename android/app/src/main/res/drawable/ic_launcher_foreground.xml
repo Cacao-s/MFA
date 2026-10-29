@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- The adaptive-icon safe zone is the middle 66dp, so the shield sits
+         inside it or the launcher will crop it. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,28 L72,36 L72,54 C72,65 64,74 54,78 C44,74 36,65 36,54 L36,36 Z" />
+    <path
+        android:fillColor="#17497D"
+        android:pathData="M54,44 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0 M51,48 L57,48 L57,62 L51,62 Z" />
+</vector>

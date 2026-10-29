@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the strings the platform itself needs are here; the rest are in the
+     Compose code, written to be extracted when the app is localised. -->
+<resources>
+    <string name="app_name">MFA</string>
+</resources>

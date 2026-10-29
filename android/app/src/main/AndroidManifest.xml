@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Scanning the QR code a website shows. Declared not-required so the
+         app still installs on a device without one; the scanner screen checks
+         at runtime. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- Sync targets only. There is no telemetry and no other network use. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Deliberately absent: no storage permissions (files go through the
+         document picker), no contacts, no location, no notifications. -->
+
+    <application
+        android:name=".MfaApplication"
+        android:label="MFA"
+        android:icon="@mipmap/ic_launcher"
+        android:theme="@style/Theme.MFA"
+        android:supportsRtl="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Opening an otpauth:// link from a browser or a password
+                 manager adds the account. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="otpauth" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

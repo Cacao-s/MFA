@@ -20,3 +20,18 @@
 - iOS／macOS：App Store
 - Android：Google Play 或 GitHub Releases 的 APK
 - Windows：GitHub Releases 的安裝檔
+
+## 開發
+
+```sh
+make help      # 列出所有 target
+make setup     # 安裝 toolchain 元件並抓相依套件
+make test      # 跑測試（目前 75 個）
+make check     # 格式、clippy、測試，等同 CI 會跑的
+```
+
+`make run` 目前會直接失敗：還沒有可以跑的 app。平台 UI 等 plan 步驟 0 的 spike 做完、技術棧定案後才開始，spike 的驗證項目見 [spike/README.md](spike/README.md)。
+
+平台無關的核心已經完成並通過測試（TOTP、`otpauth://` 解析、Google Authenticator 匯入、vault 格式與加解密、備份、同步合併邏輯），細節見 [crates/mfa-core/README.md](crates/mfa-core/README.md)。
+
+規格與實作計劃不進版控，放在 `temp/`（見 `temp/README.md`）。

@@ -1,1 +1,20 @@
 /docs
+
+# Rust
+/target/
+**/*.rs.bk
+
+# Working notes, spec and plan drafts — deliberately not version-controlled
+# (see temp/README.md).
+/temp/
+
+# Spike results, which contain real account data
+/spike/results/*
+!/spike/results/TEMPLATE.md
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

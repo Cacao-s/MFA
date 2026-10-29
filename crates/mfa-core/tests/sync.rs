@@ -164,3 +164,55 @@ fn a_backup_file_is_not_a_sync_file() {
         "got {error:?}"
     );
 }
+
+#[test]
+fn the_same_qr_code_scanned_on_both_devices_ends_up_as_one_row() {
+    let key = sync::new_sync_key();
+
+    // Neither device had the account; both scanned the website's QR code, so
+    // each minted its own id for it.
+    let mut device_a = Vault::new();
+    device_a.add(account("Example", "alice"), T0);
+    let mut device_b = Vault::new();
+    device_b.add(account("Example", "alice"), T0 + 60_000);
+
+    // Which copy survives is decided by the ids, not by who synced first, so
+    // nothing here may assume it is A's.
+    let mut remote = sync::reconcile(&device_a, None, &key)
+        .unwrap()
+        .upload
+        .unwrap();
+
+    let outcome = sync::reconcile(&device_b, Some(&remote), &key).unwrap();
+    device_b = outcome.merged;
+    assert_eq!(device_b.len(), 1, "one row after the merge");
+    assert_eq!(outcome.report.deduped, 1);
+    if let Some(upload) = outcome.upload {
+        remote = upload;
+    }
+
+    let outcome = sync::reconcile(&device_a, Some(&remote), &key).unwrap();
+    device_a = outcome.merged;
+    if let Some(upload) = outcome.upload {
+        remote = upload;
+    }
+
+    assert_eq!(device_a.len(), 1);
+    assert_eq!(
+        device_a.to_bytes().unwrap(),
+        device_b.to_bytes().unwrap(),
+        "both devices must hold the same single row"
+    );
+
+    // And this is a fixed point: syncing again moves nothing, so the two
+    // devices cannot sit rewriting the file at each other forever.
+    for device in [&device_a, &device_b] {
+        let outcome = sync::reconcile(device, Some(&remote), &key).unwrap();
+        assert!(outcome.report.is_empty());
+        assert!(outcome.upload.is_none());
+        assert_eq!(
+            outcome.merged.to_bytes().unwrap(),
+            device.to_bytes().unwrap()
+        );
+    }
+}

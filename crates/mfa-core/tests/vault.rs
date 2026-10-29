@@ -34,6 +34,43 @@ fn an_added_account_is_visible_and_generates_codes() {
 }
 
 #[test]
+fn scanning_the_same_qr_code_twice_does_not_add_a_second_row() {
+    let mut vault = Vault::new();
+    let first = vault.add(account("Example", "alice"), T0);
+    let again = vault.add(account("Example", "alice"), T0 + 5_000);
+
+    assert_eq!(again, first, "the existing account comes back");
+    assert_eq!(vault.len(), 1);
+
+    // The UI can ask first, so it can say so rather than silently no-op.
+    assert_eq!(
+        vault.find_duplicate(&account("Example", "alice")),
+        Some(first)
+    );
+    assert_eq!(vault.find_duplicate(&account("Example", "bob")), None);
+
+    // An account that differs in any field is a different account.
+    let mut with_note = account("Example", "alice");
+    with_note.note = Some("work".to_owned());
+    assert_eq!(vault.find_duplicate(&with_note), None);
+    assert_ne!(vault.add(with_note, T0 + 6_000), first);
+    assert_eq!(vault.len(), 2);
+}
+
+#[test]
+fn a_deleted_account_can_be_added_again() {
+    // The tombstone must not make the account un-addable: a user who deleted
+    // it by mistake has to be able to scan the QR code again.
+    let mut vault = Vault::new();
+    let first = vault.add(account("Example", "alice"), T0);
+    vault.delete(first, T0 + 1_000).unwrap();
+
+    let second = vault.add(account("Example", "alice"), T0 + 2_000);
+    assert_ne!(second, first);
+    assert_eq!(vault.len(), 1);
+}
+
+#[test]
 fn editing_an_account_stamps_it_as_modified() {
     let mut vault = Vault::new();
     let id = vault.add(account("Example", "alice"), T0);

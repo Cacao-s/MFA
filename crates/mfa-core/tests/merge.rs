@@ -266,3 +266,140 @@ fn three_devices_converge() {
         Some("edited on B")
     );
 }
+
+// --- duplicates -----------------------------------------------------------
+
+/// Two devices that each scanned the same QR code: identical accounts, their
+/// own UUIDs.
+fn scanned_twice() -> (Vault, Vault) {
+    let mut left = Vault::new();
+    left.add(account("Example", "alice"), T0);
+    let mut right = Vault::new();
+    right.add(account("Example", "alice"), T0 + 5_000);
+    (left, right)
+}
+
+#[test]
+fn the_same_account_scanned_on_two_devices_collapses_to_one() {
+    let (mut left, right) = scanned_twice();
+    let kept = left.entries[0].id.min(right.entries[0].id);
+
+    let report = left.merge(right);
+
+    assert_eq!(left.len(), 1, "one row, not two");
+    assert_eq!(report.deduped, 1);
+    assert_eq!(left.entries[0].id, kept);
+}
+
+#[test]
+fn both_devices_keep_the_same_one() {
+    // The choice has to be the same on every device, or they would each keep
+    // their own copy and never converge.
+    let (left, right) = scanned_twice();
+
+    let mut forward = left.clone();
+    forward.merge(right.clone());
+    let mut backward = right;
+    backward.merge(left);
+
+    assert_eq!(forward.to_bytes().unwrap(), backward.to_bytes().unwrap());
+}
+
+#[test]
+fn a_duplicate_arriving_from_elsewhere_is_not_reported_as_a_change() {
+    // The local document ends up exactly as it was, so a sync must not decide
+    // it has something new to publish.
+    let (left, right) = scanned_twice();
+    // Make the local copy the one that survives.
+    let (mut left, right) = if left.entries[0].id < right.entries[0].id {
+        (left, right)
+    } else {
+        (right, left)
+    };
+    let before = left.to_bytes().unwrap();
+
+    let report = left.merge(right);
+
+    assert_eq!(report.deduped, 1);
+    assert_eq!(report.added, 0);
+    assert!(report.is_empty(), "the document did not change");
+    assert_eq!(left.to_bytes().unwrap(), before);
+}
+
+#[test]
+fn accounts_that_differ_at_all_are_left_alone() {
+    // "Identical" means every field. Anything less and we would be deleting
+    // an account the user might have meant to keep.
+    let differences: Vec<fn(&mut mfa_core::vault::Account)> = vec![
+        |account| account.note = Some("work".to_owned()),
+        |account| account.totp.period = 60,
+        |account| account.totp.digits = 8,
+        |account| account.account = "alice2".to_owned(),
+        |account| account.issuer = Some("Example Inc".to_owned()),
+    ];
+
+    for difference in differences {
+        let (mut left, mut right) = scanned_twice();
+        let id = right.entries[0].id;
+        right.update(id, T0 + 6_000, difference).unwrap();
+
+        let report = left.merge(right);
+        assert_eq!(report.deduped, 0);
+        assert_eq!(left.len(), 2, "a difference means two accounts");
+    }
+}
+
+#[test]
+fn a_deleted_account_is_never_deduped_against_a_live_one() {
+    let (mut left, mut right) = scanned_twice();
+    let id = right.entries[0].id;
+    right.delete(id, T0 + 6_000).unwrap();
+
+    left.merge(right);
+
+    // The tombstone has to stay — it is how the other device's delete travels
+    // — and it must not swallow the live account on this one.
+    assert_eq!(left.len(), 1);
+    assert_eq!(left.entries.len(), 2);
+    assert!(left
+        .entries
+        .iter()
+        .any(|entry| entry.id == id && entry.deleted));
+}
+
+#[test]
+fn three_devices_converge_on_one_copy_of_a_duplicate() {
+    let mut a = Vault::new();
+    a.add(account("Example", "alice"), T0);
+    let mut b = Vault::new();
+    b.add(account("Example", "alice"), T0 + 1_000);
+    let mut c = Vault::new();
+    c.add(account("Example", "alice"), T0 + 2_000);
+
+    let mut first = a.clone();
+    first.merge(b.clone());
+    first.merge(c.clone());
+
+    let mut second = b.clone();
+    second.merge(c.clone());
+    second.merge(a.clone());
+
+    let mut third = c;
+    third.merge(a);
+    third.merge(b);
+
+    assert_eq!(first.len(), 1);
+    let bytes = first.to_bytes().unwrap();
+    assert_eq!(second.to_bytes().unwrap(), bytes);
+    assert_eq!(third.to_bytes().unwrap(), bytes);
+}
+
+#[test]
+fn deduping_twice_changes_nothing() {
+    let (mut left, right) = scanned_twice();
+    left.merge(right);
+    let once = left.to_bytes().unwrap();
+
+    assert_eq!(left.dedupe(), 0);
+    assert_eq!(left.to_bytes().unwrap(), once);
+}

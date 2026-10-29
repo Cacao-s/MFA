@@ -6,7 +6,7 @@
 //! `merge(b, a)` produce the same document — which is what makes two devices
 //! writing the same file converge instead of ping-ponging.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -206,13 +206,21 @@ pub struct MergeReport {
     pub updated: usize,
     pub deleted: usize,
     pub unchanged: usize,
+    /// Entries collapsed by [`Vault::dedupe`] because another entry described
+    /// exactly the same account.
+    pub deduped: usize,
     pub settings_updated: bool,
+    /// Whether the document ended up different from how it started.
+    ///
+    /// This is not implied by the counters: a duplicate arriving from another
+    /// device is reported in `deduped` but leaves the document as it was.
+    pub changed: bool,
 }
 
 impl MergeReport {
-    /// Whether the merge changed anything at all.
+    /// Whether the merge left the document exactly as it was.
     pub fn is_empty(&self) -> bool {
-        self.added == 0 && self.updated == 0 && self.deleted == 0 && !self.settings_updated
+        !self.changed
     }
 }
 
@@ -282,6 +290,17 @@ impl Vault {
             .collect()
     }
 
+    /// The id of a live entry describing exactly the same account, if any.
+    ///
+    /// Every field has to match, the note included: two entries that differ
+    /// at all are two accounts as far as this is concerned.
+    pub fn find_duplicate(&self, account: &Account) -> Option<Uuid> {
+        self.entries
+            .iter()
+            .find(|entry| entry.account.as_ref() == Some(account))
+            .map(|entry| entry.id)
+    }
+
     pub fn get(&self, id: Uuid) -> Option<&Entry> {
         self.entries
             .iter()
@@ -307,8 +326,18 @@ impl Vault {
 
     // --- writing ---------------------------------------------------------
 
-    /// Adds an account and returns its new id.
+    /// Adds an account and returns its id.
+    ///
+    /// If a live entry already describes exactly the same account — every
+    /// field equal — nothing is added and that entry's id comes back:
+    /// scanning the same QR code twice should not produce two rows. Use
+    /// [`Vault::find_duplicate`] first when the UI wants to say so.
     pub fn add(&mut self, account: impl Into<Account>, now: Millis) -> Uuid {
+        let account = account.into();
+        if let Some(existing) = self.find_duplicate(&account) {
+            return existing;
+        }
+
         let id = Uuid::new_v4();
         let order = self
             .entries
@@ -321,7 +350,7 @@ impl Vault {
             updated_at: now,
             order,
             deleted: false,
-            account: Some(account.into()),
+            account: Some(account),
         });
         self.normalize();
         id
@@ -393,8 +422,18 @@ impl Vault {
     // --- merging ---------------------------------------------------------
 
     /// Merges `other` into this vault, entry by entry.
+    ///
+    /// Exact duplicates are collapsed afterwards (see [`Vault::dedupe`]), so
+    /// two devices that each scanned the same QR code end up with one row.
     pub fn merge(&mut self, other: Vault) -> MergeReport {
-        let mut report = MergeReport::default();
+        // Snapshot first: the report is worked out by diffing, which keeps it
+        // honest about a duplicate that arrived and was then collapsed.
+        let before: BTreeMap<Uuid, String> = self
+            .entries
+            .iter()
+            .map(|entry| (entry.id, canonical(entry)))
+            .collect();
+
         let mut index: BTreeMap<Uuid, usize> = self
             .entries
             .iter()
@@ -405,38 +444,50 @@ impl Vault {
         for incoming in other.entries {
             match index.get(&incoming.id).copied() {
                 None => {
+                    // A tombstone for something we never had is kept too, or
+                    // a third device would re-add the account next round.
                     index.insert(incoming.id, self.entries.len());
-                    if incoming.deleted {
-                        // A tombstone for something we never had still has to
-                        // be kept, or we would re-add the account on the next
-                        // round from a third device.
-                        report.unchanged += 1;
-                    } else {
-                        report.added += 1;
-                    }
                     self.entries.push(incoming);
                 }
                 Some(position) => {
                     if incoming.supersedes(&self.entries[position]) {
-                        if incoming.deleted && !self.entries[position].deleted {
-                            report.deleted += 1;
-                        } else {
-                            report.updated += 1;
-                        }
                         self.entries[position] = incoming;
-                    } else {
-                        report.unchanged += 1;
                     }
                 }
             }
         }
 
-        if other.settings.updated_at > self.settings.updated_at {
+        let settings_updated = other.settings.updated_at > self.settings.updated_at;
+        if settings_updated {
             self.settings = other.settings;
-            report.settings_updated = true;
         }
 
         self.normalize();
+        let deduped = self.dedupe();
+
+        let mut report = MergeReport {
+            deduped,
+            settings_updated,
+            ..MergeReport::default()
+        };
+        for entry in &self.entries {
+            match before.get(&entry.id) {
+                None => {
+                    if !entry.deleted {
+                        report.added += 1;
+                    }
+                }
+                Some(previous) if *previous == canonical(entry) => report.unchanged += 1,
+                Some(_) if entry.deleted => report.deleted += 1,
+                Some(_) => report.updated += 1,
+            }
+        }
+
+        let surviving: BTreeSet<Uuid> = self.entries.iter().map(|entry| entry.id).collect();
+        let dropped = before.keys().filter(|id| !surviving.contains(id)).count();
+        report.changed =
+            settings_updated || dropped > 0 || report.added + report.updated + report.deleted > 0;
+
         report
     }
 
@@ -446,6 +497,44 @@ impl Vault {
         self.entries
             .retain(|entry| !(entry.deleted && entry.updated_at < now - retain_ms));
         before - self.entries.len()
+    }
+
+    /// Collapses live entries that describe exactly the same account,
+    /// keeping the one with the smallest id. Returns how many went.
+    ///
+    /// Two devices scanning the same QR code each mint their own UUID, so a
+    /// merge would otherwise leave the user with two identical rows and no
+    /// way to tell which is which. Keeping the smallest id is arbitrary, but
+    /// it is the same choice on every device, so they all converge on it
+    /// without having to record the decision anywhere.
+    ///
+    /// Only exact duplicates go. An entry that differs in any field — a note
+    /// added on one device, a different period — is a different account here,
+    /// and is left for the user to deal with.
+    pub fn dedupe(&mut self) -> usize {
+        self.normalize();
+
+        let mut seen: BTreeMap<String, Uuid> = BTreeMap::new();
+        let mut doomed: BTreeSet<Uuid> = BTreeSet::new();
+
+        // `entries` is sorted by id, so the first of a group is the one kept.
+        for entry in &self.entries {
+            let Some(account) = &entry.account else {
+                continue;
+            };
+            let key = serde_json::to_string(account).unwrap_or_default();
+            match seen.get(&key) {
+                Some(_) => {
+                    doomed.insert(entry.id);
+                }
+                None => {
+                    seen.insert(key, entry.id);
+                }
+            }
+        }
+
+        self.entries.retain(|entry| !doomed.contains(&entry.id));
+        doomed.len()
     }
 
     /// Restores the canonical entry order after a mutation.

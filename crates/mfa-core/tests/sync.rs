@@ -216,3 +216,203 @@ fn the_same_qr_code_scanned_on_both_devices_ends_up_as_one_row() {
         );
     }
 }
+
+// --- several targets at once ----------------------------------------------
+
+use mfa_core::sync::RemoteState;
+use mfa_core::Uuid;
+
+#[test]
+fn one_round_syncs_every_target() {
+    let key = sync::new_sync_key();
+
+    let mut local = Vault::new();
+    local.add(account("Local", "me"), T0);
+
+    // One target has an account we lack, one has another, one is empty.
+    let mut from_drive = Vault::new();
+    from_drive.add(account("Drive", "a"), T0 + 1_000);
+    let mut from_github = Vault::new();
+    from_github.add(account("GitHub", "b"), T0 + 2_000);
+
+    let drive_bytes = sync::seal(&from_drive, &key).unwrap();
+    let github_bytes = sync::seal(&from_github, &key).unwrap();
+    let (drive, github, server) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+
+    let outcome = sync::reconcile_all(
+        &local,
+        &[
+            RemoteState {
+                target: drive,
+                bytes: Some(&drive_bytes),
+            },
+            RemoteState {
+                target: github,
+                bytes: Some(&github_bytes),
+            },
+            RemoteState {
+                target: server,
+                bytes: None,
+            },
+        ],
+        &key,
+    )
+    .unwrap();
+
+    assert!(outcome.failures.is_empty());
+    assert_eq!(outcome.report.added, 2, "both remote accounts arrive");
+    assert_eq!(outcome.merged.len(), 3);
+
+    // All three are behind the merge, so all three get written.
+    assert_eq!(outcome.uploads.len(), 3);
+    for upload in &outcome.uploads {
+        assert_eq!(sync::open(&upload.bytes, &key).unwrap(), outcome.merged);
+    }
+
+    // And the round is a fixed point: nothing left to write anywhere.
+    let bytes = outcome.uploads[0].bytes.clone();
+    let again = sync::reconcile_all(
+        &outcome.merged,
+        &[
+            RemoteState {
+                target: drive,
+                bytes: Some(&bytes),
+            },
+            RemoteState {
+                target: github,
+                bytes: Some(&bytes),
+            },
+            RemoteState {
+                target: server,
+                bytes: Some(&bytes),
+            },
+        ],
+        &key,
+    )
+    .unwrap();
+    assert!(again.report.is_empty());
+    assert!(again.uploads.is_empty(), "no target needs rewriting");
+}
+
+#[test]
+fn a_target_that_is_already_current_is_left_alone() {
+    // Rewriting it would churn the user's cloud folder, and add an empty
+    // commit on a Git target.
+    let key = sync::new_sync_key();
+    let mut local = Vault::new();
+    local.add(account("Example", "alice"), T0);
+
+    let current = sync::seal(&local, &key).unwrap();
+    let mut behind_vault = Vault::new();
+    behind_vault.settings = local.settings.clone();
+    let behind = sync::seal(&behind_vault, &key).unwrap();
+
+    let (up_to_date, stale) = (Uuid::new_v4(), Uuid::new_v4());
+    let outcome = sync::reconcile_all(
+        &local,
+        &[
+            RemoteState {
+                target: up_to_date,
+                bytes: Some(&current),
+            },
+            RemoteState {
+                target: stale,
+                bytes: Some(&behind),
+            },
+        ],
+        &key,
+    )
+    .unwrap();
+
+    assert_eq!(outcome.uploads.len(), 1);
+    assert_eq!(outcome.uploads[0].target, stale);
+}
+
+#[test]
+fn an_unreadable_target_is_reported_and_never_written_over() {
+    // Its file may belong to someone else's sync set; overwriting it would
+    // destroy whatever accounts are in it.
+    let key = sync::new_sync_key();
+    let mut local = Vault::new();
+    local.add(account("Local", "me"), T0);
+
+    let mut other = Vault::new();
+    other.add(account("Drive", "a"), T0 + 1_000);
+    let readable = sync::seal(&other, &key).unwrap();
+    let foreign = sync::seal(&other, &sync::new_sync_key()).unwrap();
+
+    let (good, bad) = (Uuid::new_v4(), Uuid::new_v4());
+    let outcome = sync::reconcile_all(
+        &local,
+        &[
+            RemoteState {
+                target: good,
+                bytes: Some(&readable),
+            },
+            RemoteState {
+                target: bad,
+                bytes: Some(&foreign),
+            },
+        ],
+        &key,
+    )
+    .unwrap();
+
+    assert_eq!(outcome.failures.len(), 1);
+    assert_eq!(outcome.failures[0].0, bad);
+    // The readable target still synced: one broken target does not stop the
+    // others.
+    assert_eq!(outcome.merged.len(), 2);
+    assert_eq!(outcome.uploads.len(), 1);
+    assert_eq!(outcome.uploads[0].target, good);
+}
+
+#[test]
+fn a_duplicate_is_collapsed_once_for_the_whole_round() {
+    let key = sync::new_sync_key();
+
+    // The same account, scanned separately on this device and on two others.
+    let mut local = Vault::new();
+    local.add(account("Example", "alice"), T0);
+    let mut one = Vault::new();
+    one.add(account("Example", "alice"), T0 + 1_000);
+    let mut two = Vault::new();
+    two.add(account("Example", "alice"), T0 + 2_000);
+
+    let one_bytes = sync::seal(&one, &key).unwrap();
+    let two_bytes = sync::seal(&two, &key).unwrap();
+
+    let outcome = sync::reconcile_all(
+        &local,
+        &[
+            RemoteState {
+                target: Uuid::new_v4(),
+                bytes: Some(&one_bytes),
+            },
+            RemoteState {
+                target: Uuid::new_v4(),
+                bytes: Some(&two_bytes),
+            },
+        ],
+        &key,
+    )
+    .unwrap();
+
+    assert_eq!(outcome.merged.len(), 1, "one row, not three");
+    assert_eq!(outcome.report.deduped, 2);
+}
+
+#[test]
+fn a_cloud_folder_and_a_server_hold_interchangeable_files() {
+    // One sync key for the whole set, so moving between targets — or running
+    // both — needs no re-keying.
+    let key = sync::new_sync_key();
+    let mut vault = Vault::new();
+    vault.add(account("Example", "alice"), T0);
+
+    let from_folder = sync::seal(&vault, &key).unwrap();
+    let onto_server = sync::reconcile(&vault, None, &key).unwrap().upload.unwrap();
+
+    assert_eq!(sync::open(&from_folder, &key).unwrap(), vault);
+    assert_eq!(sync::open(&onto_server, &key).unwrap(), vault);
+}

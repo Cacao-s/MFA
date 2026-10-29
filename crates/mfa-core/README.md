@@ -21,7 +21,7 @@ CI, and what keeps behaviour identical on all four platforms.
 | `crypto` | XChaCha20-Poly1305 and Argon2id |
 | `container` | The file envelope shared by the vault, backup and sync files |
 | `backup` | Password-protected export and import |
-| `sync` | Read-merge-write against a file in the user's own cloud folder |
+| `sync` | Read-merge-write against every enabled sync target, in one round |
 | `pin` | The app lock's PIN fallback |
 | `qr` | Decoding a QR code from an image or screen grab (feature `qr-image`) |
 | `platform` | The traits each platform shell must implement — and the step-0 spike must prove |
@@ -46,6 +46,15 @@ recorded Argon2id cost are all part of the AEAD's associated data. A vault file
 cannot be passed off as a backup, and an attacker who can edit the file cannot
 talk a client into deriving the key with cheap parameters and then brute-force
 the password offline. `tests/backup.rs` proves the cost cannot be weakened.
+
+**Several sync targets can be live at once.** A cloud folder, a GitHub repo, a
+GitLab repo and a self-hosted server are all one trait — a file with a revision
+— and they differ only in how bytes move. The local vault is the hub:
+`sync::reconcile_all` absorbs every readable copy, dedupes once for the whole
+round, and writes back only to the targets that are behind. A target whose file
+cannot be opened is reported and never written over: it may belong to another
+sync set. This works only because the merge rule is commutative and idempotent,
+which is why that property has tests of its own.
 
 **Sync needs its own key.** The local vault's data key lives in the device's
 secure store and never leaves it, so it cannot be the key for a file other

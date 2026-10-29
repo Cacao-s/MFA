@@ -9,7 +9,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
+use zeroize::Zeroize;
 
 use crate::container::{self, Kind};
 use crate::crypto::DataKey;
@@ -132,15 +134,22 @@ impl Entry {
             core::cmp::Ordering::Equal => match (self.deleted, other.deleted) {
                 (true, false) => true,
                 (false, true) => false,
-                _ => canonical(self) < canonical(other),
+                _ => fingerprint(self) < fingerprint(other),
             },
         }
     }
 }
 
-/// A stable textual form of an entry, for deterministic tie-breaking only.
-fn canonical(entry: &Entry) -> String {
-    serde_json::to_string(entry).unwrap_or_default()
+/// A stable fingerprint of a value's canonical JSON.
+///
+/// Used wherever two records have to be compared or grouped deterministically.
+/// Hashing rather than keeping the JSON means no extra plaintext copy of a
+/// secret lingers in memory for the life of a merge.
+fn fingerprint<T: serde::Serialize>(value: &T) -> [u8; 32] {
+    let mut json = serde_json::to_string(value).unwrap_or_default();
+    let digest = Sha256::digest(json.as_bytes());
+    json.zeroize();
+    digest.into()
 }
 
 /// How the list is ordered.
@@ -175,6 +184,43 @@ impl Default for LockSettings {
     }
 }
 
+/// Where a copy of the vault is synced to.
+///
+/// Several can be enabled at once: the local vault is the hub, and each
+/// target is reconciled against it independently. That works because the
+/// merge rule is commutative and idempotent, so the order the targets are
+/// synced in does not change where they all end up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncTargetKind {
+    /// A folder the OS already syncs: iCloud Drive, Google Drive, OneDrive.
+    Folder,
+    /// A file in a GitHub repository, over the API.
+    GitHub,
+    /// A file in a GitLab repository, over the API.
+    GitLab,
+    /// A self-hosted sync server, which stores ciphertext and nothing else.
+    Server,
+}
+
+/// One configured sync target.
+///
+/// These travel with the vault, so adding a target on one device offers it on
+/// the others. Credentials never travel: the token or password for a target
+/// stays in each device's own secure store, and a device without them simply
+/// cannot sync that target.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SyncTarget {
+    pub id: Uuid,
+    pub kind: SyncTargetKind,
+    /// What the user called it, e.g. "iCloud Drive" or "work GitHub".
+    pub label: String,
+    /// Where it is: a folder path, `owner/repo/branch`, or a base URL.
+    pub location: String,
+    /// The per-target switch. A disabled target is neither read nor written.
+    pub enabled: bool,
+}
+
 /// Settings travel with the vault so they survive a restore, and merge as one
 /// unit by their own modification time.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -186,6 +232,9 @@ pub struct Settings {
     pub clipboard_clear_secs: u32,
     #[serde(default)]
     pub sort: SortMode,
+    /// Configured sync targets, any number of which may be enabled.
+    #[serde(default)]
+    pub sync: Vec<SyncTarget>,
 }
 
 impl Default for Settings {
@@ -195,6 +244,7 @@ impl Default for Settings {
             lock: LockSettings::default(),
             clipboard_clear_secs: DEFAULT_CLIPBOARD_CLEAR_SECS,
             sort: SortMode::default(),
+            sync: Vec::new(),
         }
     }
 }
@@ -426,14 +476,22 @@ impl Vault {
     /// Exact duplicates are collapsed afterwards (see [`Vault::dedupe`]), so
     /// two devices that each scanned the same QR code end up with one row.
     pub fn merge(&mut self, other: Vault) -> MergeReport {
-        // Snapshot first: the report is worked out by diffing, which keeps it
-        // honest about a duplicate that arrived and was then collapsed.
-        let before: BTreeMap<Uuid, String> = self
-            .entries
-            .iter()
-            .map(|entry| (entry.id, canonical(entry)))
-            .collect();
+        let before = self.clone();
+        self.absorb(other);
+        let deduped = self.dedupe();
 
+        let mut report = self.report_against(&before);
+        report.deduped = deduped;
+        report
+    }
+
+    /// Takes in another copy's entries and settings, without deduping or
+    /// reporting.
+    ///
+    /// Separate from [`Vault::merge`] so that syncing against several targets
+    /// at once can absorb each of them and then dedupe and report once, for
+    /// the whole round rather than per target.
+    pub(crate) fn absorb(&mut self, other: Vault) {
         let mut index: BTreeMap<Uuid, usize> = self
             .entries
             .iter()
@@ -457,36 +515,45 @@ impl Vault {
             }
         }
 
-        let settings_updated = other.settings.updated_at > self.settings.updated_at;
-        if settings_updated {
+        if other.settings.updated_at > self.settings.updated_at {
             self.settings = other.settings;
         }
-
         self.normalize();
-        let deduped = self.dedupe();
+    }
+
+    /// Counts how this vault differs from `before`, the way a merge reports it.
+    ///
+    /// Everything but `deduped`, which a diff cannot tell apart from an entry
+    /// that simply went away; the caller sets it.
+    pub fn report_against(&self, before: &Vault) -> MergeReport {
+        let previous: BTreeMap<Uuid, [u8; 32]> = before
+            .entries
+            .iter()
+            .map(|entry| (entry.id, fingerprint(entry)))
+            .collect();
 
         let mut report = MergeReport {
-            deduped,
-            settings_updated,
+            settings_updated: self.settings.updated_at > before.settings.updated_at,
             ..MergeReport::default()
         };
         for entry in &self.entries {
-            match before.get(&entry.id) {
+            match previous.get(&entry.id) {
                 None => {
                     if !entry.deleted {
                         report.added += 1;
                     }
                 }
-                Some(previous) if *previous == canonical(entry) => report.unchanged += 1,
+                Some(before) if *before == fingerprint(entry) => report.unchanged += 1,
                 Some(_) if entry.deleted => report.deleted += 1,
                 Some(_) => report.updated += 1,
             }
         }
 
         let surviving: BTreeSet<Uuid> = self.entries.iter().map(|entry| entry.id).collect();
-        let dropped = before.keys().filter(|id| !surviving.contains(id)).count();
-        report.changed =
-            settings_updated || dropped > 0 || report.added + report.updated + report.deleted > 0;
+        let dropped = previous.keys().filter(|id| !surviving.contains(id)).count();
+        report.changed = report.settings_updated
+            || dropped > 0
+            || report.added + report.updated + report.deleted > 0;
 
         report
     }
@@ -514,7 +581,7 @@ impl Vault {
     pub fn dedupe(&mut self) -> usize {
         self.normalize();
 
-        let mut seen: BTreeMap<String, Uuid> = BTreeMap::new();
+        let mut seen: BTreeMap<[u8; 32], Uuid> = BTreeMap::new();
         let mut doomed: BTreeSet<Uuid> = BTreeSet::new();
 
         // `entries` is sorted by id, so the first of a group is the one kept.
@@ -522,7 +589,7 @@ impl Vault {
             let Some(account) = &entry.account else {
                 continue;
             };
-            let key = serde_json::to_string(account).unwrap_or_default();
+            let key = fingerprint(account);
             match seen.get(&key) {
                 Some(_) => {
                     doomed.insert(entry.id);

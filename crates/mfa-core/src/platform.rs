@@ -106,13 +106,27 @@ pub struct RemoteFile<R> {
     pub revision: R,
 }
 
-/// A file in a folder the user already syncs: iCloud Drive, Google Drive,
-/// OneDrive, or a Git repository (spec §3).
+/// One place a copy of the vault is kept (spec §3).
 ///
-/// `Revision` is whatever the provider uses to detect a concurrent write — an
-/// ETag, a content hash, a commit id. [`crate::sync::reconcile`] needs it
-/// because the sync file is opaque ciphertext that no provider can merge: a
-/// write must fail rather than clobber a revision we have not merged.
+/// All four kinds of target are this one trait, because they differ only in
+/// how bytes move:
+///
+/// - a folder the OS already syncs — iCloud Drive, Google Drive, OneDrive;
+/// - a file in a GitHub repository, where the revision is the blob `sha`;
+/// - a file in a GitLab repository, where it is `last_commit_id`;
+/// - a self-hosted sync server, where it is whatever the server returns, an
+///   ETag being the obvious choice.
+///
+/// A server implementation needs credentials, as the Git ones do; they belong
+/// in the platform's secure store next to the sync key, never in the vault.
+/// The server stores ciphertext and nothing else, so it is no more trusted
+/// than a cloud drive — which is the point of self-hosting being optional
+/// rather than special.
+///
+/// `Revision` is whatever the target uses to detect a concurrent write.
+/// [`crate::sync::reconcile_all`] needs it because the sync file is opaque
+/// ciphertext that no target can merge: a write must fail rather than clobber
+/// a revision we have not merged.
 pub trait SyncProvider {
     type Error;
     type Revision: Clone + PartialEq;

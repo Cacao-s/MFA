@@ -42,4 +42,4 @@ pub use secret::Secret;
 pub use totp::{Algorithm, TotpParams};
 pub use uri::OtpauthUri;
 pub use uuid::Uuid;
-pub use vault::{Account, Entry, MergeReport, Settings, Vault};
+pub use vault::{Account, Entry, MergeReport, Settings, SyncTarget, SyncTargetKind, Vault};

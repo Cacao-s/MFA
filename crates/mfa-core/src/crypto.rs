@@ -71,8 +71,12 @@ pub struct KdfParams {
 }
 
 impl Default for KdfParams {
-    /// 64 MiB / 3 passes / 1 lane: comfortable on a desktop and on any phone
-    /// this app targets, and well above the floor for a backup password.
+    /// 64 MiB / 3 passes / 1 lane, on every device.
+    ///
+    /// There is deliberately no lighter preset for older phones: this one
+    /// password protects the backup file and the sync key on every target, so
+    /// a device that found it slow would be lowering the cost of attacking all
+    /// of them. A slow unlock on an old phone is the better trade.
     fn default() -> Self {
         Self {
             m_cost: 64 * 1024,
@@ -83,16 +87,6 @@ impl Default for KdfParams {
 }
 
 impl KdfParams {
-    /// A lighter setting for low-memory devices, at the RFC 9106 second
-    /// recommendation (19 MiB / 2 passes).
-    pub fn low_memory() -> Self {
-        Self {
-            m_cost: 19 * 1024,
-            t_cost: 2,
-            p_cost: 1,
-        }
-    }
-
     /// Rejects parameters too weak to protect a backup password.
     pub fn validate(&self) -> Result<()> {
         if self.m_cost < 8 * 1024 || self.t_cost == 0 || self.p_cost == 0 {

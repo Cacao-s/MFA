@@ -133,7 +133,7 @@ internal static partial class Mfa
 
 ```csharp
 // {"ok": {"handle": 1}}
-var opened = Mfa.Call("""{"method":"create","params":{"data_key":[...]}}""");
+var opened = Mfa.Call("""{"method":"create","params":{"data_key":"Aq8…"}}""");
 
 // {"ok": [{"id":"…","display_name":"Example (alice)","code":"123456", …}]}
 var list = Mfa.Call($"""{{"method":"accounts","handle":1,"params":{{"now_secs":{now}}}}}""");
@@ -144,8 +144,11 @@ done with it. A failure comes back as
 `{"error": {"kind": "WrongPassword", "message": "…"}}` — the same kinds Swift
 and Kotlin get.
 
-Byte arrays are JSON arrays of numbers. A vault is a few kilobytes, so the
-expansion costs less than a Base64 step on both sides would.
+Byte arrays are Base64 strings, which is what a C# `byte[]` serialises to by
+default — so `JsonSerializer` needs no converter for them. A JSON array of
+numbers is accepted on input too, for a hand-written client that sends the
+obvious thing. Both directions are pinned by tests, because it is a wire
+contract with a client we cannot see.
 
 ### Why not generated C# bindings
 

@@ -229,3 +229,74 @@ fn the_c_entry_point_works_through_pointers() {
     // Freeing null is a no-op rather than a crash.
     unsafe { mfa_string_free(core::ptr::null_mut()) };
 }
+
+#[test]
+fn byte_arrays_travel_as_base64() {
+    // Base64 is what a C# `byte[]` serialises to, so the far side needs no
+    // converter. Pinned here because it is a wire contract: changing it
+    // silently would break a client we cannot see.
+    let key = ok(json!({"method": "generate_data_key"}));
+    let encoded = key.as_str().expect("a Base64 string, not an array");
+    use base64::Engine as _;
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .expect("valid Base64");
+    assert_eq!(decoded.len(), 32);
+
+    // And it round-trips: the string we were handed is accepted straight back.
+    let opened = ok(json!({"method": "create", "params": {"data_key": key}}));
+    let handle = opened["handle"].as_u64().unwrap();
+
+    let sealed = ok(json!({"method": "seal", "handle": handle}));
+    assert!(
+        sealed.as_str().is_some(),
+        "a sealed vault comes back as Base64"
+    );
+    ok(json!({"method": "open", "params": {"data_key": key, "file": sealed}}));
+}
+
+#[test]
+fn a_number_array_is_still_accepted() {
+    // A hand-written client that sends the obvious thing should work, even
+    // though we emit Base64.
+    let key: Vec<u8> = (0..32u8).collect();
+    let opened = ok(json!({"method": "create", "params": {"data_key": key}}));
+    assert!(opened["handle"].as_u64().is_some());
+
+    // And a value that is not a byte is refused rather than truncated.
+    let bad: Vec<u16> = vec![300; 32];
+    assert_eq!(
+        error_kind(json!({"method": "create", "params": {"data_key": bad}})),
+        "Other"
+    );
+}
+
+#[test]
+fn a_sync_round_carries_bytes_both_ways_as_base64() {
+    let (handle, _) = open_vault();
+    ok(json!({"method": "add_uri", "handle": handle, "params": {"uri": URI, "now_ms": T0}}));
+    let sync_key = ok(json!({"method": "new_sync_key"}));
+    let target = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
+
+    // An empty target: nothing to send in, one upload back.
+    let round = ok(json!({
+        "method": "sync", "handle": handle,
+        "params": {
+            "remotes": [{"target": target, "bytes": null}],
+            "sync_key": sync_key
+        }
+    }));
+    let uploaded = round["uploads"][0]["bytes"].as_str().expect("Base64 out");
+
+    // Hand that same string back as the remote file: it should be understood,
+    // and leave nothing more to do.
+    let (second, _) = open_vault();
+    let round = ok(json!({
+        "method": "sync", "handle": second,
+        "params": {
+            "remotes": [{"target": target, "bytes": uploaded}],
+            "sync_key": sync_key
+        }
+    }));
+    assert_eq!(round["summary"]["added"], 1);
+}

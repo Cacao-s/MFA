@@ -12,7 +12,7 @@
 //! Both sides are UTF-8 JSON:
 //!
 //! ```json
-//! → {"method": "open", "params": {"data_key": [1,2,…], "file": [77,70,…]}}
+//! → {"method": "open", "params": {"data_key": "Aq8…", "file": "TUZBVkFVTFQ…"}}
 //! ← {"ok": {"handle": 1}}
 //!
 //! → {"method": "accounts", "handle": 1, "params": {"now_secs": 1730000000}}
@@ -24,8 +24,9 @@
 //!
 //! The method names, parameter names and result shapes are the ones in
 //! [`crate::handle`] and [`crate::types`], in `snake_case`. Byte arrays are
-//! JSON arrays of numbers: a vault is a few kilobytes, so the expansion costs
-//! nothing worth a Base64 step on both sides.
+//! Base64 strings, which is what a C# `byte[]` serialises to by default, so
+//! the far side needs no converter; a JSON array of numbers is accepted on
+//! input as well, for a hand-written client.
 //!
 //! An open vault is a `handle`, an opaque integer. Call `close` when the UI is
 //! done with it, which drops the vault and its key.
@@ -39,6 +40,7 @@ use serde_json::{json, Value};
 
 use crate::error::{ErrorKind, MfaError};
 use crate::handle::VaultHandle;
+use crate::jsonbytes::Base64Bytes;
 use crate::types::*;
 
 /// The open vaults, by handle.
@@ -167,8 +169,8 @@ fn dispatch(request: Request) -> crate::error::Result<Value> {
     // Methods that do not need an open vault.
     match method.as_str() {
         "library_version" => return value(crate::library_version()),
-        "generate_data_key" => return value(crate::generate_data_key()),
-        "new_sync_key" => return value(crate::new_sync_key()),
+        "generate_data_key" => return value(Base64Bytes(crate::generate_data_key())),
+        "new_sync_key" => return value(Base64Bytes(crate::new_sync_key())),
         "create" => {
             let p: CreateParams = take(params)?;
             let opened = VaultHandle::create(p.data_key)?;
@@ -191,11 +193,11 @@ fn dispatch(request: Request) -> crate::error::Result<Value> {
         }
         "wrap_sync_key" => {
             let p: WrapKeyParams = take(params)?;
-            return value(crate::wrap_sync_key(p.sync_key, p.password)?);
+            return value(Base64Bytes(crate::wrap_sync_key(p.sync_key, p.password)?));
         }
         "unwrap_sync_key" => {
             let p: UnwrapKeyParams = take(params)?;
-            return value(crate::unwrap_sync_key(p.key_file, p.password)?);
+            return value(Base64Bytes(crate::unwrap_sync_key(p.key_file, p.password)?));
         }
         "preview_uri" => {
             let p: UriParams = take(params)?;
@@ -223,7 +225,7 @@ fn dispatch(request: Request) -> crate::error::Result<Value> {
     let vault = with_registry(|registry| registry.get(handle))?;
 
     match method.as_str() {
-        "seal" => value(vault.seal()?),
+        "seal" => value(Base64Bytes(vault.seal()?)),
         "count" => value(vault.count()),
         "accounts" => {
             let p: NowSecsParams = take(params)?;
@@ -279,7 +281,7 @@ fn dispatch(request: Request) -> crate::error::Result<Value> {
         }
         "export_backup" => {
             let p: PasswordParams = take(params)?;
-            value(vault.export_backup(p.password)?)
+            value(Base64Bytes(vault.export_backup(p.password)?))
         }
         "import_backup" => {
             let p: ImportBackupParams = take(params)?;
@@ -368,20 +370,25 @@ fn value<T: Serialize>(result: T) -> crate::error::Result<Value> {
 
 #[derive(Deserialize)]
 struct CreateParams {
+    #[serde(with = "crate::jsonbytes::required")]
     data_key: Vec<u8>,
 }
 #[derive(Deserialize)]
 struct OpenParams {
+    #[serde(with = "crate::jsonbytes::required")]
     data_key: Vec<u8>,
+    #[serde(with = "crate::jsonbytes::required")]
     file: Vec<u8>,
 }
 #[derive(Deserialize)]
 struct WrapKeyParams {
+    #[serde(with = "crate::jsonbytes::required")]
     sync_key: Vec<u8>,
     password: String,
 }
 #[derive(Deserialize)]
 struct UnwrapKeyParams {
+    #[serde(with = "crate::jsonbytes::required")]
     key_file: Vec<u8>,
     password: String,
 }
@@ -395,11 +402,13 @@ struct UrisParams {
 }
 #[derive(Deserialize)]
 struct FileParams {
+    #[serde(with = "crate::jsonbytes::required")]
     file: Vec<u8>,
 }
 #[cfg(feature = "qr-image")]
 #[derive(Deserialize)]
 struct ImageParams {
+    #[serde(with = "crate::jsonbytes::required")]
     image: Vec<u8>,
 }
 #[derive(Deserialize)]
@@ -470,6 +479,7 @@ struct PasswordParams {
 }
 #[derive(Deserialize)]
 struct ImportBackupParams {
+    #[serde(with = "crate::jsonbytes::required")]
     file: Vec<u8>,
     password: String,
 }
@@ -500,5 +510,6 @@ struct UpsertTargetParams {
 #[derive(Deserialize)]
 struct SyncParams {
     remotes: Vec<RemoteFile>,
+    #[serde(with = "crate::jsonbytes::required")]
     sync_key: Vec<u8>,
 }

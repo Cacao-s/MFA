@@ -14,6 +14,7 @@ crate-type = ["cdylib", "staticlib", "lib"]
 name = "mfa_ffi"
 
 [dependencies]
+base64 = "0.23.1"
 mfa-core = { version = "0.1.0", path = "../mfa-core" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
@@ -29,3 +30,6 @@ qr-image = ["mfa-core/qr-image"]
 # The generator that produces the Swift and Kotlin bindings. See README.md.
 name = "uniffi-bindgen"
 path = "src/bin/uniffi-bindgen.rs"
+
+[dev-dependencies]
+base64 = "0.23.1"

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="MFA.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:MFA"
+    xmlns:views="using:MFA.Views"
+    Title="MFA">
+
+    <Grid x:Name="Root">
+        <!-- One frame; the pages decide what is on screen. The lock and setup
+             states are panels here rather than pages, because they are the
+             only two the user cannot navigate away from. -->
+        <Frame x:Name="Content" />
+
+        <StackPanel x:Name="LockPanel"
+                    Visibility="Collapsed"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="16">
+            <FontIcon Glyph="&#xE72E;" FontSize="48" HorizontalAlignment="Center" />
+            <TextBlock Text="MFA is locked"
+                       Style="{StaticResource SubtitleTextBlockStyle}"
+                       HorizontalAlignment="Center" />
+            <TextBlock x:Name="LockProblem"
+                       Visibility="Collapsed"
+                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                       TextWrapping="Wrap"
+                       MaxWidth="320"
+                       TextAlignment="Center" />
+            <Button x:Name="UnlockButton"
+                    Content="Unlock"
+                    Style="{StaticResource AccentButtonStyle}"
+                    HorizontalAlignment="Center"
+                    Click="OnUnlockClick" />
+        </StackPanel>
+
+        <StackPanel x:Name="SetupPanel"
+                    Visibility="Collapsed"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="12"
+                    MaxWidth="360">
+            <FontIcon Glyph="&#xE72E;" FontSize="48" HorizontalAlignment="Center" />
+            <TextBlock Text="MFA"
+                       Style="{StaticResource TitleTextBlockStyle}"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="Your verification codes, encrypted on this machine."
+                       TextWrapping="Wrap"
+                       TextAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <Button Content="Start fresh"
+                    Style="{StaticResource AccentButtonStyle}"
+                    HorizontalAlignment="Center"
+                    Click="OnStartFreshClick" />
+            <Button Content="Restore from a backup"
+                    HorizontalAlignment="Center"
+                    Click="OnRestoreClick" />
+        </StackPanel>
+    </Grid>
+</Window>

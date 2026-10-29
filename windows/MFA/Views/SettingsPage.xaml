@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="MFA.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer>
+        <StackPanel Padding="16" Spacing="16" MaxWidth="560">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="&#xE72B;" FontFamily="Segoe Fluent Icons"
+                        AutomationProperties.Name="Back" Click="OnBackClick" />
+                <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" />
+            </StackPanel>
+
+            <!-- Lock -->
+            <StackPanel Spacing="8">
+                <TextBlock Text="Lock" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <ToggleSwitch x:Name="LockToggle" Header="Lock MFA"
+                              Toggled="OnLockToggled" />
+                <ComboBox x:Name="TimeoutBox" Header="Lock after"
+                          SelectionChanged="OnTimeoutChanged">
+                    <x:String>Immediately</x:String>
+                    <x:String>30 seconds</x:String>
+                    <x:String>1 minute</x:String>
+                    <x:String>5 minutes</x:String>
+                </ComboBox>
+                <TextBlock x:Name="LockNote" TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+
+            <!-- PIN -->
+            <StackPanel Spacing="8">
+                <TextBlock Text="PIN" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="Asked for before revealing a setup link or exporting a backup. It is not what unlocks the app — Windows Hello does that." />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="PinButton" Content="Set a PIN…" Click="OnPinClick" />
+                    <Button x:Name="RemovePinButton" Content="Remove PIN"
+                            Visibility="Collapsed" Click="OnRemovePinClick" />
+                </StackPanel>
+            </StackPanel>
+
+            <!-- List -->
+            <StackPanel Spacing="8">
+                <TextBlock Text="List" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <ComboBox x:Name="ClipboardBox" Header="Clear the clipboard after"
+                          SelectionChanged="OnClipboardChanged">
+                    <x:String>15 seconds</x:String>
+                    <x:String>30 seconds</x:String>
+                    <x:String>1 minute</x:String>
+                </ComboBox>
+                <ComboBox x:Name="SortBox" Header="Order" SelectionChanged="OnSortChanged">
+                    <x:String>As I arranged them</x:String>
+                    <x:String>By service name</x:String>
+                </ComboBox>
+                <TextBlock TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="MFA clears the clipboard itself, so it only happens while MFA is still running. The code is kept out of clipboard history either way." />
+            </StackPanel>
+
+            <!-- Sync -->
+            <StackPanel Spacing="8">
+                <TextBlock Text="Sync" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <StackPanel x:Name="SyncSetup" Spacing="8">
+                    <Button Content="Start syncing from this machine" Click="OnCreateSyncSetClick" />
+                    <Button Content="Join a sync set already running" Click="OnJoinClick" />
+                </StackPanel>
+                <ListView x:Name="Targets" SelectionMode="None" IsItemClickEnabled="True"
+                          ItemClick="OnTargetClick" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Add a target…" Click="OnAddTargetClick" />
+                    <Button x:Name="PublishButton" Content="Publish the key file…"
+                            Click="OnPublishClick" />
+                </StackPanel>
+                <TextBlock TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="Your accounts are encrypted before they leave this machine, so no target can read them. Tokens stay on this machine and are not synced." />
+            </StackPanel>
+
+            <!-- Backup -->
+            <StackPanel Spacing="8">
+                <TextBlock Text="Backup" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Export…" Click="OnExportClick" />
+                    <Button Content="Import…" Click="OnImportClick" />
+                </StackPanel>
+                <TextBlock TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="One password protects the backup file and the key file on every sync target. Make it long: MFA cannot recover it for you." />
+            </StackPanel>
+
+            <!-- Reset -->
+            <StackPanel Spacing="8">
+                <TextBlock Text="Reset" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <Button Content="Delete everything on this machine…" Click="OnResetClick" />
+                <TextBlock x:Name="VersionLabel"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

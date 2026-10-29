@@ -179,6 +179,7 @@ pub struct SyncTargetView {
 pub struct RemoteFile {
     pub target: String,
     /// `None` when the target has nothing yet.
+    #[serde(default, with = "crate::jsonbytes::optional")]
     pub bytes: Option<Vec<u8>>,
 }
 
@@ -186,6 +187,7 @@ pub struct RemoteFile {
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct UploadRequest {
     pub target: String,
+    #[serde(with = "crate::jsonbytes::required")]
     pub bytes: Vec<u8>,
 }
 

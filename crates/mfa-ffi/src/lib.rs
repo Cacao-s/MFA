@@ -29,6 +29,7 @@ uniffi::setup_scaffolding!();
 pub mod capi;
 pub mod error;
 pub mod handle;
+pub mod jsonbytes;
 pub mod types;
 
 pub use error::{ErrorKind, MfaError};

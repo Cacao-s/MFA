@@ -815,6 +815,7 @@ dependencies = [
 name = "mfa-ffi"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "mfa-core",
  "serde",
  "serde_json",

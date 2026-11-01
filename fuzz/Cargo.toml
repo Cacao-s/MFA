@@ -1,0 +1,79 @@
+# Fuzz targets for the parsers in `mfa-core`.
+#
+# Its own workspace, not a member of the root one: the targets are built with
+# a sanitizer on a nightly toolchain, and nothing in the ordinary `cargo
+# build` / `cargo test` path should try to compile them.
+#
+#   cargo +nightly fuzz list
+#   cargo +nightly fuzz run otpauth_uri -- -max_total_time=60
+#
+[package]
+name = "mfa-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.mfa-core]
+path = "../crates/mfa-core"
+features = ["qr-image"]
+
+# Fuzzing an unoptimised parser mostly measures the allocator.
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "otpauth_uri"
+path = "fuzz_targets/otpauth_uri.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "migration_uri"
+path = "fuzz_targets/migration_uri.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "migration_payload"
+path = "fuzz_targets/migration_payload.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "container"
+path = "fuzz_targets/container.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "vault_document"
+path = "fuzz_targets/vault_document.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "base32_secret"
+path = "fuzz_targets/base32_secret.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "qr_image"
+path = "fuzz_targets/qr_image.rs"
+test = false
+doc = false
+bench = false

@@ -475,6 +475,22 @@ impl Vault {
     ///
     /// Exact duplicates are collapsed afterwards (see [`Vault::dedupe`]), so
     /// two devices that each scanned the same QR code end up with one row.
+    ///
+    /// Commutative and idempotent: `merge(a, b)` and `merge(b, a)` produce
+    /// byte-identical documents, and merging the same copy twice changes
+    /// nothing. Both are checked as properties over generated histories in
+    /// `tests/properties.rs`.
+    ///
+    /// **Not associative, and it does not need to be.** Collapsing duplicates
+    /// discards an entry outright rather than tombstoning it, so a duplicate
+    /// dropped by an early merge is no longer there to be weighed against a
+    /// copy that arrives later: `merge(merge(a, b), c)` can differ from
+    /// `merge(a, merge(b, c))` when the same account exists under more than
+    /// one id. A sync round never does that — [`crate::sync::reconcile_all`]
+    /// absorbs every target and collapses once, at the end, which *is*
+    /// order-independent, and that is the property spec §3 relies on. Code
+    /// that merges several documents in a row (importing two backup files,
+    /// say) should expect the result to depend on the order.
     pub fn merge(&mut self, other: Vault) -> MergeReport {
         let before = self.clone();
         self.absorb(other);
@@ -515,7 +531,22 @@ impl Vault {
             }
         }
 
-        if other.settings.updated_at > self.settings.updated_at {
+        // Settings merge as one unit by their own modification time. A tie
+        // needs breaking the same way an entry's does: two devices that
+        // changed a setting in the same millisecond would otherwise each keep
+        // its own, so `merge(a, b)` and `merge(b, a)` would disagree and the
+        // pair would never converge. That is worse here than for one entry,
+        // because the sync target list lives in here — the two devices would
+        // go on disagreeing about which targets exist and rewriting each
+        // other's copy every round.
+        let take_theirs = match other.settings.updated_at.cmp(&self.settings.updated_at) {
+            core::cmp::Ordering::Greater => true,
+            core::cmp::Ordering::Less => false,
+            core::cmp::Ordering::Equal => {
+                fingerprint(&other.settings) < fingerprint(&self.settings)
+            }
+        };
+        if take_theirs {
             self.settings = other.settings;
         }
         self.normalize();
@@ -533,7 +564,10 @@ impl Vault {
             .collect();
 
         let mut report = MergeReport {
-            settings_updated: self.settings.updated_at > before.settings.updated_at,
+            // Compared by content, not by timestamp: a tie broken in the
+            // incoming copy's favour changes the settings while leaving
+            // `updated_at` exactly where it was.
+            settings_updated: fingerprint(&self.settings) != fingerprint(&before.settings),
             ..MergeReport::default()
         };
         for entry in &self.entries {

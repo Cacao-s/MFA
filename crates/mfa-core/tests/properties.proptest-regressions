@@ -1,0 +1,14 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+#
+# Trimmed by hand once: the generated file also held seeds from two
+# properties that were themselves wrong (since corrected) and from one that
+# was removed, and a seed labelled with a case that was never a bug is worse
+# than no seed. The case below is a real one — two devices changing a setting
+# in the same millisecond used not to converge. There is a named regression
+# test for it too, in tests/merge.rs.
+cc 1326b8cc7cdedb1a0396100ae79e058ea18e44d72aa41176793544f4a0bcef4b # shrinks to shared = [], left = [ClipboardSecs(0)], right = [ClipboardSecs(1)]

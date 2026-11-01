@@ -403,3 +403,37 @@ fn deduping_twice_changes_nothing() {
     assert_eq!(left.dedupe(), 0);
     assert_eq!(left.to_bytes().unwrap(), once);
 }
+
+#[test]
+fn settings_changed_in_the_same_millisecond_still_converge() {
+    // Found by `tests/properties.rs`. Settings merge as one unit by their own
+    // modification time, and on an exact tie the local copy used to win —
+    // so `merge(a, b)` and `merge(b, a)` disagreed and the two devices never
+    // converged. Entries already had a tie-break for exactly this; settings
+    // did not. It matters more here than for one account, because the sync
+    // target list lives in the settings: the devices would go on disagreeing
+    // about which targets exist and rewriting each other's copy every round.
+    let (mut left, mut right, _) = divergent_pair();
+
+    let mut mine = left.settings.clone();
+    mine.clipboard_clear_secs = 10;
+    left.set_settings(mine, T0 + 5_000);
+
+    let mut theirs = right.settings.clone();
+    theirs.clipboard_clear_secs = 45;
+    right.set_settings(theirs, T0 + 5_000);
+
+    let mut left_first = left.clone();
+    left_first.merge(right.clone());
+    let mut right_first = right;
+    right_first.merge(left);
+
+    assert_eq!(
+        left_first.settings.clipboard_clear_secs, right_first.settings.clipboard_clear_secs,
+        "the two devices kept different settings"
+    );
+    assert_eq!(
+        left_first.to_bytes().unwrap(),
+        right_first.to_bytes().unwrap()
+    );
+}

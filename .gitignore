@@ -12,6 +12,14 @@
 # (see temp/README.md).
 /temp/
 
+# Fuzzing corpora and crashes: machine-generated, and a crash artefact is a
+# payload that broke a parser, which is not something to publish before it is
+# fixed.
+/fuzz/target/
+/fuzz/corpus/
+/fuzz/artifacts/
+/fuzz/coverage/
+
 # Spike results, which contain real account data
 /spike/results/*
 !/spike/results/TEMPLATE.md

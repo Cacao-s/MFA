@@ -156,3 +156,25 @@ fn a_secret_redacts_itself_in_debug_output() {
     let uri = OtpauthUri::parse("otpauth://totp/alice?secret=JBSWY3DPEHPK3PXP").unwrap();
     assert!(!format!("{uri:?}").contains("JBSWY3DP"));
 }
+
+#[test]
+fn a_multi_byte_character_where_the_scheme_ends_is_not_a_panic() {
+    // Found by `tests/properties.rs`. `strip_scheme` used to slice the input
+    // at a fixed byte index, and an index inside a multi-byte character is a
+    // panic, not an error — so any text whose seventh byte landed mid-
+    // character took the process down. The input here is whatever a QR code
+    // contained or the user pasted, and the shells call in across FFI where
+    // an unwind becomes an abort.
+    for text in [
+        "otpaut\u{e9}://totp/Example:alice?secret=JBSWY3DPEHPK3PXP",
+        "otpau\u{4e16}\u{754c}://totp/x",
+        "\u{1f600}\u{1f600}://totp/x",
+        "otpauth-migrati\u{e9}n://offline?data=AAAA",
+    ] {
+        assert!(
+            OtpauthUri::parse(text).is_err(),
+            "{text} should be refused, not parsed"
+        );
+        assert!(mfa_core::migration::parse_migration_uri(text).is_err());
+    }
+}

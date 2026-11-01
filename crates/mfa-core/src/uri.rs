@@ -151,11 +151,18 @@ impl fmt::Display for OtpauthUri {
 }
 
 /// Returns everything after `scheme://`, case-insensitively.
+///
+/// Every index here goes through `get`, which answers `None` for an index
+/// inside a multi-byte character instead of panicking. That matters because
+/// the argument is whatever a QR code contained or the user pasted: text that
+/// happens to carry a multi-byte character across the byte where the scheme
+/// would end is not this scheme, and saying so is the whole job.
 pub(crate) fn strip_scheme<'a>(uri: &'a str, scheme: &str) -> Option<&'a str> {
-    let prefix_len = scheme.len() + 3;
-    let (prefix, rest) = uri.split_at_checked(prefix_len)?;
-    let (name, separator) = prefix.split_at(scheme.len());
-    (name.eq_ignore_ascii_case(scheme) && separator == "://").then_some(rest)
+    let name = uri.get(..scheme.len())?;
+    if !name.eq_ignore_ascii_case(scheme) {
+        return None;
+    }
+    uri.get(scheme.len()..)?.strip_prefix("://")
 }
 
 /// Splits a percent-encoded label into its optional issuer and its account.

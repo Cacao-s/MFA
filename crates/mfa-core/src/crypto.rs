@@ -94,7 +94,7 @@ impl KdfParams {
     /// little that the password behind it could be attacked cheaply.
     pub const MIN_M_COST: u32 = 8 * 1024;
 
-    /// Highest memory cost we will derive a key with, in KiB (1 GiB).
+    /// Highest memory cost we will derive a key with, in KiB (256 MiB).
     ///
     /// This ceiling is not about cryptographic strength; it is about who
     /// chooses our allocation. `m_cost` arrives from a file header — an
@@ -103,7 +103,12 @@ impl KdfParams {
     /// memory before it does anything else. Without a bound, editing four
     /// bytes of a header to ask for terabytes is enough to kill the app every
     /// time the user tries to import or enrol.
-    pub const MAX_M_COST: u32 = 1024 * 1024;
+    ///
+    /// Four times the default, so the default can still be raised twice
+    /// without orphaning a file, and low enough that the worst a hostile
+    /// header can do is a slow import rather than a reaped process: a phone
+    /// is killed for reserving far less than a gigabyte.
+    pub const MAX_M_COST: u32 = 256 * 1024;
 
     /// Highest number of passes, bounded for the same reason as
     /// [`Self::MAX_M_COST`]: a file should not be able to ask for work that

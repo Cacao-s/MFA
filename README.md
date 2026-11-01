@@ -26,13 +26,28 @@
 ```sh
 make help      # 列出所有 target
 make setup     # 安裝 toolchain 元件並抓相依套件
-make test      # 跑測試（目前 75 個）
+make test      # 跑測試（目前 174 個，含 property test）
 make check     # 格式、clippy、測試，等同 CI 會跑的
 ```
 
-`make run` 目前會直接失敗：還沒有可以跑的 app。平台 UI 等 plan 步驟 0 的 spike 做完、技術棧定案後才開始，spike 的驗證項目見 [spike/README.md](spike/README.md)。
+`make run` 會直接失敗，而且會一直如此：UI 是逐平台原生的，沒有哪一個跑在這台機器上。每個平台各自用自己的工具鏈建置，步驟見各自的 README：
+
+| 目錄 | UI | 建置 | 需要 |
+|---|---|---|---|
+| [apple/](apple/README.md) | SwiftUI（macOS ＋ iOS 共用一份） | `./scripts/build-apple.sh` | macOS ＋ Xcode |
+| [android/](android/README.md) | Compose | `./scripts/build-android.sh` | NDK ＋ cargo-ndk |
+| [windows/](windows/README.md) | WinUI 3 | `windows/MFA.sln` | Windows ＋ MSBuild |
 
 平台無關的核心已經完成並通過測試（TOTP、`otpauth://` 解析、Google Authenticator 匯入、vault 格式與加解密、備份、同步合併邏輯），細節見 [crates/mfa-core/README.md](crates/mfa-core/README.md)。
+
+解析器全部有 property test（任意輸入不得 panic、能解析的就能原樣寫回），合併規則的可交換性與幂等性也是 property 而不是舉例。另外有 fuzz target：
+
+```sh
+make fuzz                              # 列出 target
+make fuzz TARGET=otpauth_uri SECONDS=300
+```
+
+**步驟 0 的 spike 還沒做**，它需要四台實機（真的生物辨識硬體與相機），驗證項目見 [spike/README.md](spike/README.md)。
 
 各平台 UI 透過 [crates/mfa-ffi](crates/mfa-ffi/README.md) 呼叫核心：Swift／Kotlin 用 UniFFI 產生的 binding，Windows 走 C ABI 上的 JSON 通道。
 

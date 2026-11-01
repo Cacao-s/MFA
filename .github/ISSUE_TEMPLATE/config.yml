@@ -1,0 +1,7 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Cacao-s/MFA/security/advisories/new
+    about: >
+      Report privately, not as an issue. This app holds the secrets that get
+      people into their accounts — see SECURITY.md.

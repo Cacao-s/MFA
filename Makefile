@@ -3,8 +3,9 @@
 #   make help     list targets
 #
 # The core (crates/mfa-core) builds and tests with nothing but a Rust
-# toolchain. UI and packaging targets land once the stack is chosen
-# (docs/spec.md §2); names follow ~/git/dev_docs/project-conventions/SKILL.md.
+# toolchain. The platform UIs live in apple/, android/ and windows/ and each
+# needs its own SDK, so they are built by the scripts rather than from here
+# (temp/spec.md §2); names follow ~/git/dev_docs/project-conventions/SKILL.md.
 
 SHELL   := /bin/bash
 OUT     := build
@@ -17,7 +18,7 @@ LIB_EXT  := $(shell [ "$$(uname)" = "Darwin" ] && echo dylib || echo so)
 FFI_LIB  := target/debug/libmfa_ffi.$(LIB_EXT)
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build run server bindings test lint fmt fmt-check check fixtures clean
+.PHONY: help setup build run server bindings test lint fmt fmt-check check fuzz fixtures clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -31,10 +32,15 @@ build: ## Build everything
 	$(CARGO) build --workspace $(FEATURES)
 
 run: ## Run the app
-	@echo "There is no app to run yet: this repository holds the"
-	@echo "platform-independent core and nothing that draws a window. The UI"
-	@echo "layer is blocked on the step-0 spike and the stack choice that"
-	@echo "follows it — see spike/README.md."
+	@echo "Nothing here draws a window on this machine. The UI is native per"
+	@echo "platform and each one builds with its own toolchain:"
+	@echo
+	@echo "  apple/    SwiftUI, macOS + iOS   ./scripts/build-apple.sh   (Xcode)"
+	@echo "  android/  Compose                ./scripts/build-android.sh (NDK)"
+	@echo "  windows/  WinUI 3                windows/MFA.sln            (MSBuild)"
+	@echo
+	@echo "Each directory has a README with the build steps. The step-0 spike"
+	@echo "in spike/ is still outstanding and needs real devices."
 	@echo
 	@echo "To exercise the core instead:   make test"
 	@exit 1
@@ -69,6 +75,19 @@ fmt-check: ## Check formatting without changing anything
 	$(CARGO) fmt --all --check
 
 check: fmt-check lint test ## Everything CI will check
+
+fuzz: ## Fuzz one parser, e.g. make fuzz TARGET=otpauth_uri SECONDS=300
+	@command -v cargo-fuzz >/dev/null || { \
+		echo "cargo-fuzz is not installed:"; \
+		echo "  cargo install cargo-fuzz"; \
+		exit 1; }
+	@test -n "$(TARGET)" || { \
+		echo "Pick a target:"; \
+		cd fuzz && cargo +nightly fuzz list | sed 's/^/  /'; \
+		echo; \
+		echo "  make fuzz TARGET=<name> [SECONDS=60]"; \
+		exit 1; }
+	cd fuzz && cargo +nightly fuzz run $(TARGET) -- -max_total_time=$(or $(SECONDS),60)
 
 fixtures: ## Regenerate test fixtures from the reference scripts
 	python3 -I tools/ga_encode.py

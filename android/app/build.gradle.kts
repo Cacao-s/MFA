@@ -56,6 +56,12 @@ android {
     packaging {
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1")
     }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -84,4 +90,9 @@ dependencies {
     // The @aar classifier matters: the plain jar has no Android native libs
     // and the generated bindings fail to load at runtime with it.
     implementation(variantOf(libs.jna) { artifactType("aar") })
+
+    // The cross-language conformance suite: see
+    // conformance/vectors/sync-provider.json.
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
 }

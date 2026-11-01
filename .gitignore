@@ -20,6 +20,10 @@
 /fuzz/artifacts/
 /fuzz/coverage/
 
+# .NET build output for the conformance suite.
+/conformance/dotnet/bin/
+/conformance/dotnet/obj/
+
 # Spike results, which contain real account data
 /spike/results/*
 !/spike/results/TEMPLATE.md

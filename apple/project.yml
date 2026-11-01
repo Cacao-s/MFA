@@ -69,3 +69,32 @@ targets:
         INFOPLIST_FILE: Resources/Info-macOS.plist
         ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_ENTITLEMENTS: Resources/MFA-macOS.entitlements
+
+  # The cross-language conformance suite: conformance/vectors/*.json, run
+  # against the real HTTPProvider.
+  #
+  # Deliberately not part of either app target. It compiles the two Sync
+  # sources that import nothing but Foundation, so it needs no XCFramework, no
+  # signing identity and no device — which is what lets CI run it on a bare
+  # checkout before anything else has been built.
+  MFAConformance:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Sources/Sync/SyncProvider.swift
+      - path: Sources/Sync/HTTPProvider.swift
+      - path: Tests/Conformance
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.zeyanlin.mfa.conformance
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+        DEVELOPMENT_TEAM: ""
+
+schemes:
+  MFAConformance:
+    build:
+      targets:
+        MFAConformance: [test]
+    test:
+      targets: [MFAConformance]

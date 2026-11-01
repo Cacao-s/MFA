@@ -24,7 +24,8 @@ namespace MFA.Sync;
 internal sealed class HttpProvider(
     HttpProvider.Flavour flavour,
     string location,
-    string token) : ISyncProvider
+    string token,
+    HttpClient? client = null) : ISyncProvider
 {
     internal enum Flavour { SelfHosted, GitHub, GitLab }
 
@@ -32,10 +33,23 @@ internal sealed class HttpProvider(
     /// One client for the process. A new <see cref="HttpClient"/> per request
     /// exhausts sockets under any load, and this one is never reconfigured.
     /// </summary>
-    private static readonly HttpClient Client = new()
+    private static readonly HttpClient Shared = new()
     {
         Timeout = TimeSpan.FromSeconds(30),
     };
+
+    /// <summary>
+    /// The shared client, unless one was passed in.
+    /// </summary>
+    /// <remarks>
+    /// The only caller that passes one is the conformance suite
+    /// (<c>conformance/dotnet</c>), which hands over a client with a fake
+    /// transport so the status-code decisions below can be checked without a
+    /// network. The alternative was to leave this untestable, which for a
+    /// table written out three times in three languages is not much of an
+    /// alternative.
+    /// </remarks>
+    private readonly HttpClient http = client ?? Shared;
 
     public Task<Fetched?> FetchAsync(string name) => flavour switch
     {
@@ -58,7 +72,7 @@ internal sealed class HttpProvider(
         using var request = new HttpRequestMessage(HttpMethod.Get, SelfHostedUri(name));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        using var response = await Client.SendAsync(request);
+        using var response = await http.SendAsync(request);
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
         await EnsureAsync(response);
 
@@ -85,7 +99,7 @@ internal sealed class HttpProvider(
             request.Headers.IfNoneMatch.Add(EntityTagHeaderValue.Any);
         }
 
-        using var response = await Client.SendAsync(request);
+        using var response = await http.SendAsync(request);
         // 412 is the server saying somebody wrote first: a retry, not an error
         // to show the user.
         if (response.StatusCode == HttpStatusCode.PreconditionFailed) return null;
@@ -108,7 +122,7 @@ internal sealed class HttpProvider(
             HttpMethod.Get,
             $"https://api.github.com/repos/{owner}/{repo}/contents/{name}?ref={branch}");
 
-        using var response = await Client.SendAsync(request);
+        using var response = await http.SendAsync(request);
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
         await EnsureAsync(response);
 
@@ -139,7 +153,7 @@ internal sealed class HttpProvider(
             $"https://api.github.com/repos/{owner}/{repo}/contents/{name}");
         request.Content = JsonContent.Create(body);
 
-        using var response = await Client.SendAsync(request);
+        using var response = await http.SendAsync(request);
         // 409 is a stale sha; 422 is "already exists" on a create.
         if (response.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.UnprocessableEntity)
         {
@@ -188,7 +202,7 @@ internal sealed class HttpProvider(
             $"/repository/files/{Uri.EscapeDataString(name)}?ref={branch}");
         request.Headers.Add("PRIVATE-TOKEN", token);
 
-        using var response = await Client.SendAsync(request);
+        using var response = await http.SendAsync(request);
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
         await EnsureAsync(response);
 
@@ -223,7 +237,7 @@ internal sealed class HttpProvider(
         };
         request.Headers.Add("PRIVATE-TOKEN", token);
 
-        using var response = await Client.SendAsync(request);
+        using var response = await http.SendAsync(request);
         // 400 covers a stale last_commit_id and "already exists".
         if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Conflict)
         {

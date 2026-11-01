@@ -1,0 +1,758 @@
+{
+  "contract": "mfa_core::platform::SyncProvider over HTTP, as implemented three times: android/…/sync/HttpProvider.kt, apple/Sources/Sync/HTTPProvider.swift, windows/MFA/Sync/HttpProvider.cs",
+  "why": [
+    "The same decision table is written once per platform, in three languages, and nothing but these vectors makes the three agree.",
+    "The outcomes are not interchangeable. `absent` means 'be the first to write'; `lost_race` means 'fetch, merge and try again'; `error` means 'tell the user'. A target that reports a race as an error stops syncing silently, and one that reports an error as a race retries until it gives up.",
+    "The self-hosted rows are checked against the real server in crates/mfa-sync-server/tests/conformance.rs, so this file cannot drift away from what the server actually answers."
+  ],
+  "outcomes": {
+    "fetched": "the bytes and a revision",
+    "absent": "nothing is there yet (null)",
+    "lost_race": "somebody wrote first; re-read, merge, retry (null)",
+    "written": "stored, with the new revision",
+    "error": "throw, and let the coordinator report it"
+  },
+  "token": "conformance-token-not-a-real-one",
+  "blob_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+  "blob_sha256_hex": "589eccba685311323eec69027e21ed7c8d40129bca76b7d5000c0be0f0084069",
+  "cases": [
+    {
+      "id": "self_hosted/fetch/present",
+      "flavour": "self_hosted",
+      "operation": "fetch",
+      "location": "https://sync.example.test",
+      "name": "mfa-sync.vault",
+      "exchanges": [
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://sync.example.test/v1/files/mfa-sync.vault",
+            "headers": {
+              "authorization": "Bearer conformance-token-not-a-real-one"
+            }
+          },
+          "response": {
+            "status": 200,
+            "headers": {
+              "etag": "\"9f8e7d6c\""
+            },
+            "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ="
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "fetched",
+        "revision": "9f8e7d6c",
+        "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ="
+      },
+      "note": "The ETag is the revision, with its quotes stripped. A client that keeps the quotes sends If-Match: \"\"9f8e7d6c\"\" and loses every race."
+    },
+    {
+      "id": "self_hosted/fetch/absent",
+      "flavour": "self_hosted",
+      "operation": "fetch",
+      "location": "https://sync.example.test",
+      "name": "mfa-sync.vault",
+      "exchanges": [
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://sync.example.test/v1/files/mfa-sync.vault",
+            "headers": {
+              "authorization": "Bearer conformance-token-not-a-real-one"
+            }
+          },
+          "response": {
+            "status": 404,
+            "headers": {},
+            "body_base64": ""
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "absent"
+      },
+      "note": "Not an error: the first device to sync finds nothing there."
+    },
+    {
+      "id": "self_hosted/fetch/no-etag",
+      "flavour": "self_hosted",
+      "operation": "fetch",
+      "location": "https://sync.example.test",
+      "name": "mfa-sync.vault",
+      "exchanges": [
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://sync.example.test/v1/files/mfa-sync.vault",
+            "headers": {
+              "authorization": "Bearer conformance-token-not-a-real-one"
+            }
+          },
+          "response": {
+            "status": 200,
+            "headers": {},
+            "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ="
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "error"
+      },
+      "note": "Without a revision there is nothing to guard the next write with, so this has to fail rather than be treated as a first write."
+    },
+    {
+      "id": "self_hosted/fetch/unauthorized",
+      "flavour": "self_hosted",
+      "operation": "fetch",
+      "location": "https://sync.example.test",
+      "name": "mfa-sync.vault",
+      "exchanges": [
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://sync.example.test/v1/files/mfa-sync.vault",
+            "headers": {
+              "authorization": "Bearer conformance-token-not-a-real-one"
+            }
+          },
+          "response": {
+            "status": 401,
+            "headers": {},
+            "body_base64": ""
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "error"
+      }
+    },
+    {
+      "id": "self_hosted/fetch/server-error",
+      "flavour": "self_hosted",
+      "operation": "fetch",
+      "location": "https://sync.example.test",
+      "name": "mfa-sync.vault",
+      "exchanges": [
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://sync.example.test/v1/files/mfa-sync.vault",
+            "headers": {
+              "authorization": "Bearer conformance-token-not-a-real-one"
+            }
+          },
+          "response": {
+            "status": 500,
+            "headers": {},
+            "body_base64": ""
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "error"
+      }
+    },
+    {
+      "id": "self_hosted/put/first-write",
+      "flavour": "self_hosted",
+      "operation": "put",
+      "location": "https://sync.example.test",
+      "name": "mfa-sync.vault",
+      "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+      "expected_revision": null,
+      "exchanges": [
+        {
+          "request": {
+            "method": "PUT",
+            "url": "https://sync.example.test/v1/files/mfa-sync.vault",
+            "headers": {
+              "authorization": "Bearer conformance-token-not-a-real-one",
+              "if-none-match": "*"
+            },
+            "headers_absent": [
+              "if-match"
+            ],
+            "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ="
+          },
+          "response": {
+            "status": 204,
+            "headers": {
+              "etag": "\"newrev\""
+            },
+            "body_base64": ""
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "written",
+        "revision": "newrev"
+      },
+      "note": "No revision in hand means create-only. If-Match must be absent: the server answers 428 to an unguarded overwrite and 412 to If-Match on nothing, so sending the wrong one turns a first write into a failure."
+    },
+    {
+      "id": "self_hosted/put/guarded-write",
+      "flavour": "self_hosted",
+      "operation": "put",
+      "location": "https://sync.example.test",
+      "name": "mfa-sync.vault",
+      "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+      "expected_revision": "9f8e7d6c",
+      "exchanges": [
+        {
+          "request": {
+            "method": "PUT",
+            "url": "https://sync.example.test/v1/files/mfa-sync.vault",
+            "headers": {
+              "authorization": "Bearer conformance-token-not-a-real-one",
+              "if-match": "\"9f8e7d6c\""
+            },
+            "headers_absent": [
+              "if-none-match"
+            ],
+            "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ="
+          },
+          "response": {
+            "status": 204,
+            "headers": {
+              "etag": "\"newrev\""
+            },
+            "body_base64": ""
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "written",
+        "revision": "newrev"
+      },
+      "note": "The quotes go back on for the header."
+    },
+    {
+      "id": "self_hosted/put/lost-race",
+      "flavour": "self_hosted",
+      "operation": "put",
+      "location": "https://sync.example.test",
+      "name": "mfa-sync.vault",
+      "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+      "expected_revision": "stale",
+      "exchanges": [
+        {
+          "request": {
+            "method": "PUT",
+            "url": "https://sync.example.test/v1/files/mfa-sync.vault",
+            "headers": {
+              "authorization": "Bearer conformance-token-not-a-real-one",
+              "if-match": "\"stale\""
+            }
+          },
+          "response": {
+            "status": 412,
+            "headers": {},
+            "body_base64": ""
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "lost_race"
+      },
+      "note": "412 is somebody else writing first. It must return null so the coordinator fetches, merges and retries — never an error, and never an overwrite."
+    },
+    {
+      "id": "self_hosted/put/precondition-required",
+      "flavour": "self_hosted",
+      "operation": "put",
+      "location": "https://sync.example.test",
+      "name": "mfa-sync.vault",
+      "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+      "expected_revision": null,
+      "exchanges": [
+        {
+          "request": {
+            "method": "PUT",
+            "url": "https://sync.example.test/v1/files/mfa-sync.vault"
+          },
+          "response": {
+            "status": 428,
+            "headers": {},
+            "body_base64": ""
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "error"
+      },
+      "note": "428 means this client sent no guard at all. That is a bug in the client, not a race, so it must not be retried quietly: retrying would loop, and treating it as success would be a lie."
+    },
+    {
+      "id": "self_hosted/put/no-etag-in-response",
+      "flavour": "self_hosted",
+      "operation": "put",
+      "location": "https://sync.example.test",
+      "name": "mfa-sync.vault",
+      "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+      "expected_revision": "9f8e7d6c",
+      "exchanges": [
+        {
+          "request": {
+            "method": "PUT",
+            "url": "https://sync.example.test/v1/files/mfa-sync.vault"
+          },
+          "response": {
+            "status": 204,
+            "headers": {},
+            "body_base64": ""
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "written",
+        "revision": "589eccba685311323eec69027e21ed7c8d40129bca76b7d5000c0be0f0084069"
+      },
+      "note": "A server that returns no ETag on write still wrote. The revision is then the SHA-256 of what we sent, lower-case hex, which is exactly how the server derives its own ETag — so the next guarded write matches."
+    },
+    {
+      "id": "github/fetch/present",
+      "flavour": "github",
+      "operation": "fetch",
+      "location": "octocat/vault/main",
+      "name": "mfa-sync.vault",
+      "exchanges": [
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://api.github.com/repos/octocat/vault/contents/mfa-sync.vault?ref=main",
+            "headers": {
+              "authorization": "Bearer conformance-token-not-a-real-one",
+              "accept": "application/vnd.github+json"
+            }
+          },
+          "response": {
+            "status": 200,
+            "headers": {
+              "content-type": "application/json"
+            },
+            "body_json": {
+              "encoding": "base64",
+              "content": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+              "sha": "blobsha1"
+            }
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "fetched",
+        "revision": "blobsha1",
+        "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ="
+      },
+      "note": "The blob sha is the revision, not the commit sha."
+    },
+    {
+      "id": "github/fetch/absent",
+      "flavour": "github",
+      "operation": "fetch",
+      "location": "octocat/vault/main",
+      "name": "mfa-sync.vault",
+      "exchanges": [
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://api.github.com/repos/octocat/vault/contents/mfa-sync.vault?ref=main",
+            "headers": {
+              "authorization": "Bearer conformance-token-not-a-real-one",
+              "accept": "application/vnd.github+json"
+            }
+          },
+          "response": {
+            "status": 404,
+            "headers": {},
+            "body_base64": ""
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "absent"
+      }
+    },
+    {
+      "id": "github/fetch/unexpected-encoding",
+      "flavour": "github",
+      "operation": "fetch",
+      "location": "octocat/vault/main",
+      "name": "mfa-sync.vault",
+      "exchanges": [
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://api.github.com/repos/octocat/vault/contents/mfa-sync.vault?ref=main",
+            "headers": {
+              "authorization": "Bearer conformance-token-not-a-real-one",
+              "accept": "application/vnd.github+json"
+            }
+          },
+          "response": {
+            "status": 200,
+            "headers": {},
+            "body_json": {
+              "encoding": "none",
+              "content": "",
+              "sha": "blobsha1"
+            }
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "error"
+      },
+      "note": "GitHub sends `encoding: none` for a file too large for the contents API. Decoding it as base64 would produce a vault of nothing."
+    },
+    {
+      "id": "github/put/first-write",
+      "flavour": "github",
+      "operation": "put",
+      "location": "octocat/vault/main",
+      "name": "mfa-sync.vault",
+      "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+      "expected_revision": null,
+      "exchanges": [
+        {
+          "request": {
+            "method": "PUT",
+            "url": "https://api.github.com/repos/octocat/vault/contents/mfa-sync.vault",
+            "headers": {
+              "authorization": "Bearer conformance-token-not-a-real-one",
+              "accept": "application/vnd.github+json"
+            },
+            "body_json_has": {
+              "content": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+              "branch": "main"
+            },
+            "body_json_lacks": [
+              "sha"
+            ]
+          },
+          "response": {
+            "status": 201,
+            "headers": {},
+            "body_json": {
+              "content": {
+                "sha": "newblobsha"
+              }
+            }
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "written",
+        "revision": "newblobsha"
+      },
+      "note": "Omitting `sha` is the guard: GitHub refuses to overwrite without it."
+    },
+    {
+      "id": "github/put/guarded-write",
+      "flavour": "github",
+      "operation": "put",
+      "location": "octocat/vault/main",
+      "name": "mfa-sync.vault",
+      "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+      "expected_revision": "blobsha1",
+      "exchanges": [
+        {
+          "request": {
+            "method": "PUT",
+            "url": "https://api.github.com/repos/octocat/vault/contents/mfa-sync.vault",
+            "headers": {
+              "authorization": "Bearer conformance-token-not-a-real-one",
+              "accept": "application/vnd.github+json"
+            },
+            "body_json_has": {
+              "content": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+              "branch": "main",
+              "sha": "blobsha1"
+            }
+          },
+          "response": {
+            "status": 200,
+            "headers": {},
+            "body_json": {
+              "content": {
+                "sha": "newblobsha"
+              }
+            }
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "written",
+        "revision": "newblobsha"
+      }
+    },
+    {
+      "id": "github/put/stale-sha",
+      "flavour": "github",
+      "operation": "put",
+      "location": "octocat/vault/main",
+      "name": "mfa-sync.vault",
+      "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+      "expected_revision": "blobsha1",
+      "exchanges": [
+        {
+          "request": {
+            "method": "PUT",
+            "url": "https://api.github.com/repos/octocat/vault/contents/mfa-sync.vault"
+          },
+          "response": {
+            "status": 409,
+            "headers": {},
+            "body_base64": ""
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "lost_race"
+      }
+    },
+    {
+      "id": "github/put/already-exists",
+      "flavour": "github",
+      "operation": "put",
+      "location": "octocat/vault/main",
+      "name": "mfa-sync.vault",
+      "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+      "expected_revision": null,
+      "exchanges": [
+        {
+          "request": {
+            "method": "PUT",
+            "url": "https://api.github.com/repos/octocat/vault/contents/mfa-sync.vault"
+          },
+          "response": {
+            "status": 422,
+            "headers": {},
+            "body_base64": ""
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "lost_race"
+      },
+      "note": "422 on a create means somebody created it first — the same race as a stale sha, reached from the other direction."
+    },
+    {
+      "id": "gitlab/fetch/present",
+      "flavour": "gitlab",
+      "operation": "fetch",
+      "location": "4711/main",
+      "name": "mfa-sync.vault",
+      "exchanges": [
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://gitlab.com/api/v4/projects/4711/repository/files/mfa-sync.vault?ref=main",
+            "headers": {
+              "private-token": "conformance-token-not-a-real-one"
+            }
+          },
+          "response": {
+            "status": 200,
+            "headers": {},
+            "body_json": {
+              "encoding": "base64",
+              "content": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+              "last_commit_id": "commit1"
+            }
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "fetched",
+        "revision": "commit1",
+        "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ="
+      },
+      "note": "GitLab's revision is the last commit to touch the file, and it goes in the body rather than a header."
+    },
+    {
+      "id": "gitlab/fetch/absent",
+      "flavour": "gitlab",
+      "operation": "fetch",
+      "location": "4711/main",
+      "name": "mfa-sync.vault",
+      "exchanges": [
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://gitlab.com/api/v4/projects/4711/repository/files/mfa-sync.vault?ref=main",
+            "headers": {
+              "private-token": "conformance-token-not-a-real-one"
+            }
+          },
+          "response": {
+            "status": 404,
+            "headers": {},
+            "body_base64": ""
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "absent"
+      }
+    },
+    {
+      "id": "gitlab/put/first-write-posts",
+      "flavour": "gitlab",
+      "operation": "put",
+      "location": "4711/main",
+      "name": "mfa-sync.vault",
+      "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+      "expected_revision": null,
+      "exchanges": [
+        {
+          "request": {
+            "method": "POST",
+            "url": "https://gitlab.com/api/v4/projects/4711/repository/files/mfa-sync.vault",
+            "headers": {
+              "private-token": "conformance-token-not-a-real-one"
+            },
+            "body_json_has": {
+              "branch": "main",
+              "content": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+              "encoding": "base64"
+            },
+            "body_json_lacks": [
+              "last_commit_id"
+            ]
+          },
+          "response": {
+            "status": 201,
+            "headers": {},
+            "body_json": {
+              "file_path": "mfa-sync.vault"
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://gitlab.com/api/v4/projects/4711/repository/files/mfa-sync.vault?ref=main"
+          },
+          "response": {
+            "status": 200,
+            "headers": {},
+            "body_json": {
+              "encoding": "base64",
+              "content": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+              "last_commit_id": "commit2"
+            }
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "written",
+        "revision": "commit2"
+      },
+      "note": "GitLab is strict about the verb: POST creates, PUT updates. And its write response carries no commit id, so the new revision has to be read back — a second request, which is part of the contract."
+    },
+    {
+      "id": "gitlab/put/guarded-write-puts",
+      "flavour": "gitlab",
+      "operation": "put",
+      "location": "4711/main",
+      "name": "mfa-sync.vault",
+      "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+      "expected_revision": "commit1",
+      "exchanges": [
+        {
+          "request": {
+            "method": "PUT",
+            "url": "https://gitlab.com/api/v4/projects/4711/repository/files/mfa-sync.vault",
+            "headers": {
+              "private-token": "conformance-token-not-a-real-one"
+            },
+            "body_json_has": {
+              "branch": "main",
+              "content": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+              "encoding": "base64",
+              "last_commit_id": "commit1"
+            }
+          },
+          "response": {
+            "status": 200,
+            "headers": {},
+            "body_json": {
+              "file_path": "mfa-sync.vault"
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "GET",
+            "url": "https://gitlab.com/api/v4/projects/4711/repository/files/mfa-sync.vault?ref=main"
+          },
+          "response": {
+            "status": 200,
+            "headers": {},
+            "body_json": {
+              "encoding": "base64",
+              "content": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+              "last_commit_id": "commit2"
+            }
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "written",
+        "revision": "commit2"
+      }
+    },
+    {
+      "id": "gitlab/put/stale-commit",
+      "flavour": "gitlab",
+      "operation": "put",
+      "location": "4711/main",
+      "name": "mfa-sync.vault",
+      "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+      "expected_revision": "commit1",
+      "exchanges": [
+        {
+          "request": {
+            "method": "PUT",
+            "url": "https://gitlab.com/api/v4/projects/4711/repository/files/mfa-sync.vault"
+          },
+          "response": {
+            "status": 400,
+            "headers": {},
+            "body_base64": ""
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "lost_race"
+      },
+      "note": "GitLab answers 400, not 412, for a stale last_commit_id. Treating 400 as a client error would turn every collision into a visible failure."
+    },
+    {
+      "id": "gitlab/put/conflict",
+      "flavour": "gitlab",
+      "operation": "put",
+      "location": "4711/main",
+      "name": "mfa-sync.vault",
+      "body_base64": "TUZBU1lOQzEgb3BhcXVlIGNpcGhlcnRleHQsIG5vdCBhIHJlYWwgdmF1bHQ=",
+      "expected_revision": null,
+      "exchanges": [
+        {
+          "request": {
+            "method": "POST",
+            "url": "https://gitlab.com/api/v4/projects/4711/repository/files/mfa-sync.vault"
+          },
+          "response": {
+            "status": 409,
+            "headers": {},
+            "body_base64": ""
+          }
+        }
+      ],
+      "expect": {
+        "outcome": "lost_race"
+      }
+    }
+  ]
+}

@@ -914,6 +914,7 @@ dependencies = [
  "data-encoding",
  "http-body-util",
  "mfa-core",
+ "serde_json",
  "sha2",
  "subtle",
  "tempfile",

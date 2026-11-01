@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Runs conformance/vectors/sync-provider.json against the real Windows
+    implementation.
+
+    windows/MFA/Sync/HttpProvider.cs depends on nothing but the base class
+    library — no WinUI, no WinRT — so it compiles and runs on any platform
+    .NET runs on, which is what makes this checkable in CI and on a Linux
+    machine rather than only on Windows.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>MFA.Conformance</RootNamespace>
+    <AssemblyName>MFA.Conformance</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The implementation is compiled into the test assembly rather than
+      referenced, so its `internal` types are reachable without adding an
+      InternalsVisibleTo to the Windows app.
+    -->
+    <Compile Include="../../windows/MFA/Sync/ISyncProvider.cs" Link="implementation/ISyncProvider.cs" />
+    <Compile Include="../../windows/MFA/Sync/HttpProvider.cs" Link="implementation/HttpProvider.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+</Project>

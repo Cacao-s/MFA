@@ -47,6 +47,14 @@ make fuzz                              # 列出 target
 make fuzz TARGET=otpauth_uri SECONDS=300
 ```
 
+CI 存在但**不會自己跑**（依指示沒有掛 `push` trigger），要手動啟動：
+
+```sh
+gh workflow run checks.yml                      # fmt、clippy、測試、三套 conformance
+gh workflow run checks.yml -f fuzz_seconds=300  # 外加 fuzz
+gh workflow run platforms.yml                   # 四個平台的建置
+```
+
 **步驟 0 的 spike 還沒做**，它需要四台實機（真的生物辨識硬體與相機），驗證項目見 [spike/README.md](spike/README.md)。
 
 各平台 UI 透過 [crates/mfa-ffi](crates/mfa-ffi/README.md) 呼叫核心：Swift／Kotlin 用 UniFFI 產生的 binding，Windows 走 C ABI 上的 JSON 通道。

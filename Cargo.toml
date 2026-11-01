@@ -5,7 +5,12 @@ members = ["crates/mfa-core", "crates/mfa-ffi", "crates/mfa-sync-server"]
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.82"
+# Not a choice about our own code, which compiles on much older toolchains.
+# It is what the dependency graph in Cargo.lock actually needs: uuid 1.29 wants
+# 1.89, and cargo-platform — pulled in by cargo_metadata, which uniffi uses —
+# wants 1.91. Checked in CI, because a rust-version nobody verifies is a
+# promise that gets broken on somebody else's machine.
+rust-version = "1.91"
 license = "MIT"
 repository = "https://github.com/Cacao-s/MFA"
 

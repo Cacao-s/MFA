@@ -24,6 +24,28 @@
 /conformance/dotnet/bin/
 /conformance/dotnet/obj/
 
+# Platform build output and local machine state. None of this was covered
+# before, because none of the platform builds had ever been run.
+#
+# Android: Gradle's caches and the SDK path, which is per machine.
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+
+# Apple: the Xcode project is generated from project.yml by xcodegen. A
+# .pbxproj in version control is the reviewable-blob problem project.yml
+# exists to avoid.
+/apple/*.xcodeproj/
+/apple/*.xcworkspace/
+/apple/build/
+/apple/DerivedData/
+
+# Windows: MSBuild output, and the FFI library the app copies in.
+/windows/**/bin/
+/windows/**/obj/
+/windows/MFA/runtimes/
+
 # Spike results, which contain real account data
 /spike/results/*
 !/spike/results/TEMPLATE.md

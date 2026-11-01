@@ -1,0 +1,185 @@
+#
+# Does each platform still build?
+#
+# Separate from checks.yml because these are the slow jobs — each one installs
+# a platform toolchain and builds the Rust core for it — and because they
+# answer a different question. The checks ask whether the code is right; these
+# ask whether it still compiles somewhere none of us can compile it.
+#
+# ---------------------------------------------------------------------------
+# THIS WORKFLOW ONLY RUNS WHEN YOU START IT.
+#
+#   gh workflow run platforms.yml
+#   gh workflow run platforms.yml -f targets=apple
+#
+# No `push` trigger, by decision. If you do turn one on later, put it on
+# tags or a release rather than on every commit: a full four-platform build
+# is minutes of runner time, and nothing about it changes between two commits
+# that only touch the core.
+# ---------------------------------------------------------------------------
+#
+# WHAT THIS CANNOT TELL YOU
+#
+# A green run here means the code compiles and links. It says nothing about
+# whether Face ID, the Keystore, DPAPI, the camera or the app-switcher
+# thumbnail behave the way the security model assumes — that is step 0, it
+# needs real devices, and it is not done (spike/README.md). Do not read a
+# green badge as "the app works".
+#
+name: platforms
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: 'Which to build'
+        required: false
+        default: all
+        type: choice
+        options: [all, apple, android, windows]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  apple:
+    name: Apple — XCFramework, then macOS and iOS
+    if: inputs.targets == 'all' || inputs.targets == 'apple'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-apple-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-apple-
+
+      - run: brew install xcodegen
+
+      - name: Rust targets for both platforms and the simulator
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin \
+                            aarch64-apple-ios aarch64-apple-ios-sim
+
+      # Never run before now: this repository has no Mac. The script's own
+      # README says the first run should expect a path or two to need fixing.
+      - name: Build the core as an XCFramework
+        run: ./scripts/build-apple.sh --release
+
+      - name: Generate the project
+        working-directory: apple
+        run: xcodegen generate
+
+      # Signing is the owner's business; this only has to compile and link.
+      - name: Build macOS
+        working-directory: apple
+        run: |
+          xcodebuild build \
+            -scheme MFA-macOS \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build iOS
+        working-directory: apple
+        run: |
+          xcodebuild build \
+            -scheme MFA-iOS \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO
+
+  android:
+    name: Android — jniLibs, then the APK
+    if: inputs.targets == 'all' || inputs.targets == 'android'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache cargo and gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            target
+          key: android-${{ hashFiles('Cargo.lock', 'android/gradle/libs.versions.toml') }}
+          restore-keys: android-
+
+      - name: Rust targets for every ABI the APK carries
+        run: |
+          rustup target add aarch64-linux-android armv7-linux-androideabi \
+                            x86_64-linux-android i686-linux-android
+          cargo install cargo-ndk --locked
+
+      # The runner's own NDK, so the version is whatever the image ships.
+      # Worth pinning here once a build has actually succeeded and the
+      # version it succeeded with is known.
+      - name: Build the core for Android
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+        run: ./scripts/build-android.sh
+
+      # Debug rather than release: release runs R8, and an unsigned release
+      # APK is not something anyone can install anyway.
+      - name: Build the APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mfa-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+  windows:
+    name: Windows — the FFI library, then WinUI 3
+    if: inputs.targets == 'all' || inputs.targets == 'windows'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-windows-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-windows-
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # The C# side loads this through the C ABI, so it is a plain cdylib
+      # rather than anything Windows-specific.
+      - name: Build the FFI library
+        run: cargo build --release -p mfa-ffi
+
+      - name: Put it where the app expects it
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path windows/MFA/runtimes/win-x64/native
+          Copy-Item target/release/mfa_ffi.dll `
+                    windows/MFA/runtimes/win-x64/native/ -Force
+
+      # Never run before now either: this repository has no Windows machine.
+      # The WinUI 3 workload may need installing explicitly; if this fails on
+      # a missing workload rather than on the code, that is the fix.
+      - name: Build the app
+        run: dotnet build windows/MFA.sln -c Debug

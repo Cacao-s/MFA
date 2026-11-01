@@ -159,3 +159,92 @@ fn an_empty_vault_can_be_backed_up() {
     let file = backup::export(&Vault::new(), PASSWORD, &test_kdf()).unwrap();
     assert!(backup::import(&file, PASSWORD).unwrap().is_empty());
 }
+
+/// Builds a backup envelope by hand, with whatever KDF cost the test wants.
+///
+/// The format is public, so writing a header no honest exporter would write
+/// takes an attacker no more effort than it takes this helper.
+fn backup_claiming_kdf_cost(m_cost: u32, t_cost: u32, p_cost: u32) -> Vec<u8> {
+    // 24 zero bytes and 16 zero bytes, Base64: a well-formed nonce and salt.
+    let header = format!(
+        concat!(
+            r#"{{"cipher":"xchacha20poly1305","nonce":"{nonce}","#,
+            r#""kdf":{{"id":"argon2id","m_cost":{m_cost},"t_cost":{t_cost},"#,
+            r#""p_cost":{p_cost},"salt":"{salt}"}}}}"#
+        ),
+        nonce = "A".repeat(32),
+        salt = format!("{}==", "A".repeat(22)),
+        m_cost = m_cost,
+        t_cost = t_cost,
+        p_cost = p_cost,
+    );
+
+    let mut file = b"MFABACKP".to_vec();
+    file.push(mfa_core::container::FORMAT_VERSION);
+    file.extend_from_slice(&u16::try_from(header.len()).unwrap().to_le_bytes());
+    file.extend_from_slice(header.as_bytes());
+    // More than a bare tag, so parsing gets as far as the KDF.
+    file.extend_from_slice(&[0u8; 32]);
+    file
+}
+
+#[test]
+fn a_header_demanding_absurd_memory_is_refused_before_any_is_reserved() {
+    // Argon2id reserves `m_cost` KiB before it does anything else, and
+    // `m_cost` arrives from the file. A backup file is handed to us from
+    // outside — that is the whole point of one — so a header asking for
+    // terabytes has to be refused on sight. If it were not, this test would
+    // not fail: it would take the machine down with it.
+    let file = backup_claiming_kdf_cost(u32::MAX, 3, 1);
+
+    // What the file claims is still readable, so the UI can say why.
+    assert_eq!(
+        backup::inspect(&file).unwrap().kdf.unwrap().m_cost,
+        u32::MAX
+    );
+
+    let error = backup::import(&file, PASSWORD).unwrap_err();
+    assert!(
+        matches!(error, Error::UnsupportedKdfCost { .. }),
+        "got {error:?}"
+    );
+}
+
+#[test]
+fn a_header_asking_for_endless_passes_is_refused_too() {
+    let error =
+        backup::import(&backup_claiming_kdf_cost(64 * 1024, u32::MAX, 1), PASSWORD).unwrap_err();
+    assert!(
+        matches!(error, Error::UnsupportedKdfCost { .. }),
+        "got {error:?}"
+    );
+}
+
+#[test]
+fn a_header_below_the_cost_floor_is_still_refused() {
+    // The other direction, which the authenticated header already makes
+    // unreachable by tampering: a file that was written weak in the first
+    // place does not get to be opened weak.
+    let error = backup::import(&backup_claiming_kdf_cost(1024, 1, 1), PASSWORD).unwrap_err();
+    assert!(
+        matches!(error, Error::UnsupportedKdfCost { .. }),
+        "got {error:?}"
+    );
+}
+
+#[test]
+fn we_will_not_write_a_file_at_a_cost_we_would_not_read() {
+    let absurd = KdfParams {
+        m_cost: u32::MAX,
+        t_cost: 3,
+        p_cost: 1,
+    };
+    assert!(backup::export(&populated(), PASSWORD, &absurd).is_err());
+
+    let feeble = KdfParams {
+        m_cost: 1024,
+        t_cost: 1,
+        p_cost: 1,
+    };
+    assert!(backup::export(&populated(), PASSWORD, &feeble).is_err());
+}

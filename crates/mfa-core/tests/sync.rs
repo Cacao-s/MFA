@@ -416,3 +416,57 @@ fn a_cloud_folder_and_a_server_hold_interchangeable_files() {
     assert_eq!(sync::open(&from_folder, &key).unwrap(), vault);
     assert_eq!(sync::open(&onto_server, &key).unwrap(), vault);
 }
+
+#[test]
+fn a_backup_file_is_not_accepted_as_a_sync_key_file() {
+    // The sync password *is* the backup password, by decision (spec §3), so
+    // the password cannot tell these two files apart. The container's magic
+    // is the only thing that can, which is why the wrapped key has a kind of
+    // its own rather than borrowing the backup's.
+    let mut vault = Vault::new();
+    vault.add(account("Example", "alice"), T0);
+    let backup_file = mfa_core::backup::export(&vault, SYNC_PASSWORD, &test_kdf()).unwrap();
+
+    let error = sync::unwrap_key(&backup_file, SYNC_PASSWORD).unwrap_err();
+    assert!(
+        matches!(
+            error,
+            Error::WrongFileKind {
+                expected: "sync key"
+            }
+        ),
+        "got {error:?}"
+    );
+}
+
+#[test]
+fn a_sync_key_file_is_not_accepted_as_a_backup() {
+    // The same confusion in the other direction: restoring from what is
+    // actually a key file should say so, not fail somewhere further in.
+    let key_file = sync::wrap_key(&sync::new_sync_key(), SYNC_PASSWORD, &test_kdf()).unwrap();
+
+    let error = mfa_core::backup::import(&key_file, SYNC_PASSWORD).unwrap_err();
+    assert!(
+        matches!(error, Error::WrongFileKind { expected: "backup" }),
+        "got {error:?}"
+    );
+}
+
+#[test]
+fn a_sync_vault_file_is_not_accepted_as_a_key_file() {
+    let key = sync::new_sync_key();
+    let mut vault = Vault::new();
+    vault.add(account("Example", "alice"), T0);
+    let sealed = sync::seal(&vault, &key).unwrap();
+
+    let error = sync::unwrap_key(&sealed, SYNC_PASSWORD).unwrap_err();
+    assert!(
+        matches!(
+            error,
+            Error::WrongFileKind {
+                expected: "sync key"
+            }
+        ),
+        "got {error:?}"
+    );
+}

@@ -83,7 +83,20 @@ async fn write_then_rename(temporary: &Path, final_path: &Path, bytes: &[u8]) ->
     file.sync_all().await?;
     drop(file);
 
-    tokio::fs::rename(temporary, final_path).await
+    tokio::fs::rename(temporary, final_path).await?;
+
+    // The file's own bytes are on the device, but the rename that published
+    // them is a directory change and is not durable until the directory is
+    // flushed too. Without this, a crash can leave the old content behind
+    // under an ETag we already told the client was stored. Opening a
+    // directory for sync is a Unix facility; on a platform that refuses it
+    // there is nothing further to do.
+    if let Some(parent) = final_path.parent() {
+        if let Ok(directory) = tokio::fs::File::open(parent).await {
+            let _ = directory.sync_all().await;
+        }
+    }
+    Ok(())
 }
 
 /// A strong ETag: the hex SHA-256 of the content.

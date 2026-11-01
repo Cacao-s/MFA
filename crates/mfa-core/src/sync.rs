@@ -27,7 +27,9 @@
 //!   needs no re-keying.
 //! - `mfa-sync.key` holds that key wrapped with the user's password
 //!   (Argon2id) — the same password as the encrypted backup, by decision, so
-//!   there is only one to remember. Adding a device means entering it once;
+//!   there is only one to remember. It is a container kind of its own, because
+//!   sharing the password means magic is all that keeps a backup file and a
+//!   key file from opening as each other. Adding a device means entering it once;
 //!   the device then keeps the sync key in its own secure store.
 //! - `mfa-sync.vault` holds the vault sealed directly with the sync key, so an
 //!   ordinary sync costs no key derivation at all.
@@ -62,12 +64,12 @@ pub fn new_sync_key() -> SyncKey {
 
 /// Wraps the sync key with the user's sync password, for `mfa-sync.key`.
 pub fn wrap_key(key: &SyncKey, password: &str, kdf: &KdfParams) -> Result<Vec<u8>> {
-    container::seal_with_password(Kind::Backup, password, kdf, key.expose())
+    container::seal_with_password(Kind::SyncKey, password, kdf, key.expose())
 }
 
 /// Unwraps `mfa-sync.key` when enrolling a new device.
 pub fn unwrap_key(bytes: &[u8], password: &str) -> Result<SyncKey> {
-    let raw = container::open_with_password(Kind::Backup, password, bytes)?;
+    let raw = container::open_with_password(Kind::SyncKey, password, bytes)?;
     DataKey::from_slice(&raw)
 }
 

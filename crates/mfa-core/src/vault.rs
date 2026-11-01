@@ -629,7 +629,17 @@ impl Vault {
                 supported: u8::try_from(VAULT_FORMAT).unwrap_or(u8::MAX),
             });
         }
+        let mut ids: BTreeSet<Uuid> = BTreeSet::new();
         for entry in &vault.entries {
+            // Two entries sharing an id breaks the thing every other
+            // operation assumes: `absorb` indexes by id and would see one of
+            // them, so `delete` could tombstone the first while the second
+            // stayed visible, and two devices would never converge. Our own
+            // writes cannot produce it, but a backup file or a sync file is
+            // someone else's document until it has been checked.
+            if !ids.insert(entry.id) {
+                return Err(Error::MalformedVault);
+            }
             // A live entry without an account, or a tombstone with one, would
             // make `visible()` and `merge()` disagree about what exists.
             if entry.deleted == entry.account.is_some() {

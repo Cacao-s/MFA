@@ -89,6 +89,13 @@ pub enum Error {
     #[error("key derivation failed")]
     KeyDerivationFailed,
 
+    #[error("the file asks for a key-derivation cost outside the supported range: {m_cost} KiB of memory, {t_cost} passes, {p_cost} lanes")]
+    UnsupportedKdfCost {
+        m_cost: u32,
+        t_cost: u32,
+        p_cost: u32,
+    },
+
     // --- QR decoding (feature `qr-image`) --------------------------------
     #[error("that image could not be read")]
     UnreadableImage,

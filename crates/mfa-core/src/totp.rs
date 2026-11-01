@@ -109,14 +109,26 @@ impl TotpParams {
         Self::new(self.algorithm, self.digits, self.period).map(|_| ())
     }
 
+    /// The period to divide by.
+    ///
+    /// [`TotpParams`]'s fields are public and `Deserialize` does not run
+    /// [`Self::validate`], so a shell can hold a `period` of zero without
+    /// having gone through [`Self::new`]. The countdown on the account list
+    /// calls into here every second; dividing by zero there would take the
+    /// whole app down over a bad field, so clamp instead. Code generation
+    /// still refuses the value outright — see [`Self::code_at`].
+    fn divisor(&self) -> u64 {
+        u64::from(self.period.max(1))
+    }
+
     /// The counter value TOTP uses at `unix_secs` (T0 = 0).
     pub fn counter_at(&self, unix_secs: u64) -> u64 {
-        unix_secs / u64::from(self.period)
+        unix_secs / self.divisor()
     }
 
     /// Seconds until the current code expires, in `1..=period`.
     pub fn remaining_secs_at(&self, unix_secs: u64) -> u32 {
-        let period = u64::from(self.period);
+        let period = self.divisor();
         (period - (unix_secs % period)) as u32
     }
 
@@ -146,8 +158,15 @@ impl TotpParams {
 
 /// Raw HOTP (RFC 4226 §5.3) with the dynamic-truncation step.
 ///
-/// `digits` is assumed validated; callers go through [`TotpParams`].
-pub fn hotp(algorithm: Algorithm, secret: &Secret, counter: u64, digits: u8) -> String {
+/// Crate-internal because it cannot defend itself: `10u32.pow(digits)`
+/// overflows above nine digits, and the truncation offset needs a digest of at
+/// least 20 bytes. Both hold for every value [`TotpParams`] admits, and
+/// [`TotpParams::code_at`] is the only way in.
+pub(crate) fn hotp(algorithm: Algorithm, secret: &Secret, counter: u64, digits: u8) -> String {
+    debug_assert!(
+        (MIN_DIGITS..=MAX_DIGITS).contains(&digits),
+        "hotp was handed unvalidated digits"
+    );
     let message = counter.to_be_bytes();
 
     /// HMAC over `message`, returning the digest as bytes.

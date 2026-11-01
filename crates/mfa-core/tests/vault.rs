@@ -278,3 +278,29 @@ fn a_newer_format_is_refused_rather_than_half_read() {
     let error = Vault::from_bytes(newer).unwrap_err().to_string();
     assert!(error.contains("newer version"), "unhelpful: {error}");
 }
+
+#[test]
+fn a_document_with_two_entries_sharing_an_id_is_refused() {
+    // Our own writes cannot produce one, but a backup file and a sync file
+    // are someone else's documents until they have been checked. Everything
+    // downstream indexes entries by id: `absorb` would see one of the pair,
+    // so `delete` could tombstone that one and leave the other visible, and
+    // two devices would never agree on what exists.
+    let entry = concat!(
+        r#"{"id":"11111111-2222-3333-4444-555555555555","updated_at":1,"order":0,"#,
+        r#""account":{"account":"alice","secret":"JBSWY3DPEHPK3PXP","#,
+        r#""totp":{"algorithm":"SHA1","digits":6,"period":30}}}"#
+    );
+
+    let duplicated = format!(r#"{{"format":{VAULT_FORMAT},"entries":[{entry},{entry}]}}"#);
+    let error = Vault::from_bytes(duplicated.as_bytes()).unwrap_err();
+    assert!(matches!(error, Error::MalformedVault), "got {error:?}");
+
+    // The same document with one of the pair removed parses, so this test is
+    // about the duplication and not about hand-written JSON.
+    let single = format!(r#"{{"format":{VAULT_FORMAT},"entries":[{entry}]}}"#);
+    assert_eq!(
+        Vault::from_bytes(single.as_bytes()).unwrap().entries.len(),
+        1
+    );
+}

@@ -10,8 +10,10 @@
 //!
 //! The AAD is every byte before the ciphertext, so the magic, the version and
 //! the recorded KDF cost are all authenticated: an attacker cannot talk a
-//! client into deriving a key with cheaper parameters, and a vault file cannot
-//! be passed off as a backup file.
+//! client into deriving a key with cheaper parameters, and no kind of file can
+//! be passed off as another. That last property is why every kind has magic of
+//! its own, the wrapped sync key included — it shares the backup file's
+//! password, so magic is the only thing separating the two domains.
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
@@ -39,6 +41,14 @@ pub enum Kind {
     Backup,
     /// A file in the user's own cloud folder, encrypted with the sync key.
     Sync,
+    /// The sync key itself, wrapped with the user's sync password.
+    ///
+    /// Its own kind rather than a [`Kind::Backup`]: both are sealed with a
+    /// password-derived key, and by decision (spec §3) it is the *same*
+    /// password, so without separate magic the two files authenticate
+    /// interchangeably and the only thing standing between a swapped file and
+    /// a confusing failure is that a vault is never exactly 32 bytes long.
+    SyncKey,
 }
 
 impl Kind {
@@ -47,6 +57,7 @@ impl Kind {
             Kind::Vault => b"MFAVAULT",
             Kind::Backup => b"MFABACKP",
             Kind::Sync => b"MFASYNC1",
+            Kind::SyncKey => b"MFASKEY1",
         }
     }
 
@@ -55,6 +66,7 @@ impl Kind {
             Kind::Vault => "vault",
             Kind::Backup => "backup",
             Kind::Sync => "sync",
+            Kind::SyncKey => "sync key",
         }
     }
 }
@@ -224,6 +236,8 @@ fn parse(bytes: &[u8]) -> Result<Parsed<'_>> {
         Kind::Backup
     } else if magic == Kind::Sync.magic() {
         Kind::Sync
+    } else if magic == Kind::SyncKey.magic() {
+        Kind::SyncKey
     } else {
         // The caller knows which kind it asked for; name that one.
         return Err(Error::CorruptFile);

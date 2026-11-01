@@ -87,10 +87,46 @@ impl Default for KdfParams {
 }
 
 impl KdfParams {
-    /// Rejects parameters too weak to protect a backup password.
+    /// Lowest memory cost we will derive a key with, in KiB.
+    ///
+    /// A file may legitimately record less than today's default — one written
+    /// by an older build, or by a future one that lowered it — but not so
+    /// little that the password behind it could be attacked cheaply.
+    pub const MIN_M_COST: u32 = 8 * 1024;
+
+    /// Highest memory cost we will derive a key with, in KiB (1 GiB).
+    ///
+    /// This ceiling is not about cryptographic strength; it is about who
+    /// chooses our allocation. `m_cost` arrives from a file header — an
+    /// imported backup, or `mfa-sync.key` fetched from a folder, repository or
+    /// server someone else can write to — and Argon2id reserves that much
+    /// memory before it does anything else. Without a bound, editing four
+    /// bytes of a header to ask for terabytes is enough to kill the app every
+    /// time the user tries to import or enrol.
+    pub const MAX_M_COST: u32 = 1024 * 1024;
+
+    /// Highest number of passes, bounded for the same reason as
+    /// [`Self::MAX_M_COST`]: a file should not be able to ask for work that
+    /// never finishes.
+    pub const MAX_T_COST: u32 = 16;
+
+    /// Highest number of lanes.
+    pub const MAX_P_COST: u32 = 16;
+
+    /// Rejects parameters we will not derive a key with: too weak to protect
+    /// a backup password, or too expensive to be anything but an attack.
     pub fn validate(&self) -> Result<()> {
-        if self.m_cost < 8 * 1024 || self.t_cost == 0 || self.p_cost == 0 {
-            return Err(Error::KeyDerivationFailed);
+        let too_weak = self.m_cost < Self::MIN_M_COST || self.t_cost == 0 || self.p_cost == 0;
+        let too_costly = self.m_cost > Self::MAX_M_COST
+            || self.t_cost > Self::MAX_T_COST
+            || self.p_cost > Self::MAX_P_COST;
+
+        if too_weak || too_costly {
+            return Err(Error::UnsupportedKdfCost {
+                m_cost: self.m_cost,
+                t_cost: self.t_cost,
+                p_cost: self.p_cost,
+            });
         }
         Ok(())
     }

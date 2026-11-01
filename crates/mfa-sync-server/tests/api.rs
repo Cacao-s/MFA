@@ -310,3 +310,35 @@ fn a_short_token_stops_the_server_starting() {
         .expect_err("a short token must be refused");
     assert!(error.to_string().contains("at least 32"));
 }
+
+#[tokio::test]
+async fn a_wildcard_if_match_is_not_accepted_as_a_guard() {
+    // RFC 9110 lets `If-Match: *` pass as long as something is stored, which
+    // checks no revision at all: a client sending it is overwriting a vault
+    // it never read, the write the 428 exists to refuse. Against nothing
+    // stored the wildcard is a real precondition failure instead — see
+    // `if_match_on_a_missing_blob_is_refused`.
+    let (app, _directory) = server();
+    put(&app, NAME, blob(1), &[]).await;
+
+    for guard in ["*", "\"something\", *"] {
+        let response = put(&app, NAME, blob(2), &[("if-match", guard)]).await;
+        assert_eq!(
+            response.status,
+            StatusCode::PRECONDITION_REQUIRED,
+            "guard {guard}"
+        );
+        assert_eq!(get(&app, NAME, &[]).await.body.as_ref(), blob(1).as_slice());
+    }
+}
+
+#[tokio::test]
+async fn a_wildcard_if_none_match_still_creates() {
+    // The wildcard keeps its meaning on the create-only path: there it is a
+    // real precondition, not a way around one.
+    let (app, _directory) = server();
+
+    let written = put(&app, NAME, blob(1), &[("if-none-match", "*")]).await;
+    assert_eq!(written.status, StatusCode::NO_CONTENT);
+    assert_eq!(get(&app, NAME, &[]).await.body.as_ref(), blob(1).as_slice());
+}

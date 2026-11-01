@@ -22,7 +22,10 @@
 //!
 //! - `If-Match: "<etag>"` — write only if the blob is still at that revision.
 //!   A mismatch is `412 Precondition Failed`, and the client should re-read,
-//!   merge again and retry rather than overwrite.
+//!   merge again and retry rather than overwrite. `If-Match: *` against a
+//!   stored blob is `428`, not a pass: it asserts only that something is
+//!   there, which is the unguarded overwrite this endpoint will not take.
+//!   Against nothing stored it is an ordinary `412`.
 //! - `If-None-Match: *` — write only if the blob does not exist yet. An
 //!   existing blob is `412`.
 //! - A write to an existing blob with neither header is `428 Precondition
@@ -162,6 +165,15 @@ async fn put_file(
         if !passes {
             return Err(ApiError::PreconditionFailed);
         }
+        // It passed — but if it passed only because `*` means "as long as
+        // something is there", then no revision was checked at all. RFC 9110
+        // allows that; this endpoint does not, because a client writing a
+        // vault whose revision it never read is the write the 428 below
+        // exists to refuse. A `*` against nothing stored is a genuine
+        // precondition failure and has already been answered above.
+        if mentions_wildcard(requested.as_bytes()) {
+            return Err(ApiError::PreconditionRequired);
+        }
     }
     if let Some(requested) = if_none_match {
         let passes = !current
@@ -189,6 +201,15 @@ async fn put_file(
 
 fn etag_header(etag: &str) -> [(header::HeaderName, String); 1] {
     [(header::ETAG, format!("\"{etag}\""))]
+}
+
+/// Whether a precondition header offers `*` as one of its candidates.
+///
+/// Tolerates the same comma-separated list [`etag_matches`] does, so a `*`
+/// hidden among real ETags is not a way past the check.
+fn mentions_wildcard(requested: &[u8]) -> bool {
+    core::str::from_utf8(requested)
+        .is_ok_and(|value| value.split(',').any(|candidate| candidate.trim() == "*"))
 }
 
 /// Compares an `If-Match` / `If-None-Match` value against a stored ETag.

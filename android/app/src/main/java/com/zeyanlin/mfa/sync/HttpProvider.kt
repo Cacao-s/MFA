@@ -211,6 +211,20 @@ class HttpProvider(
 
     // --- shared ----------------------------------------------------------
 
+    /**
+     * GitLab wants the file path percent-encoded, `/` included.
+     *
+     * `URLEncoder` is form encoding, not path encoding: it agrees with the
+     * Swift and C# implementations on everything the vectors cover, because
+     * the only names passed in are `mfa-sync.vault` and `mfa-sync.key` and a
+     * numeric project id. It would disagree on a space — `+` here, `%20`
+     * there — and on `~`. If a name ever stops being a constant, this has to
+     * become a real unreserved-set encoder and gain a vector, because this is
+     * the one implementation that cannot be tested on a Mac or in CI without
+     * the Android SDK. The same line in Swift was wrong in the other
+     * direction and nobody noticed until the suite ran; see
+     * `conformance/README.md`.
+     */
     private fun encode(value: String): String =
         java.net.URLEncoder.encode(value, "UTF-8")
 

@@ -12,6 +12,10 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <!-- Built against the oldest runtime we support, run on whatever the
+         machine has: a developer with only a newer .NET installed would
+         otherwise get "you must install .NET" instead of a test result. -->
+    <RollForward>LatestMajor</RollForward>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>

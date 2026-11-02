@@ -44,23 +44,41 @@ make fuzz TARGET=otpauth_uri SECONDS=300
 make server                # run the sync server (needs MFA_SYNC_TOKEN)
 ```
 
-`make run` fails on purpose: no UI runs on a plain Linux checkout. Building a
-platform UI needs that platform's SDK — see `apple/README.md`,
+`make run` fails on purpose: there is no one app to run. Building a platform
+UI needs that platform's SDK and its own script — see `apple/README.md`,
 `android/README.md`, `windows/README.md`.
 
 Fuzzing needs a nightly toolchain and `cargo install cargo-fuzz`.
 
-## What cannot be done here
+## What can be checked, and where
 
-A container has no Mac, no Xcode, no Android SDK (`dl.google.com` is blocked
-by the network policy), no .NET, and no device. So:
+Find out before claiming anything. One run answers it:
 
-- The Apple, Android and Windows apps cannot be built or run. They can be read
-  and edited; they cannot be checked. Say so rather than implying a change is
-  verified.
-- The step-0 spike cannot be run at all. It needs real biometric hardware and
-  a real camera on four machines.
-- Signing, notarisation and store submission need the owner's credentials.
+```sh
+/opt/homebrew/bin/bash docs/scripts/verify-on-mac.sh </dev/null
+```
+
+It runs everything the machine is equipped for and reports the rest as `skip`,
+so the summary is also the answer to "what can this machine check?".
+
+On the owner's Mac that is: the Rust gate, the XCFramework, both Apple apps
+(compile and link, unsigned), the Swift conformance suite, and the .NET one.
+In a Linux container it is the Rust gate and .NET only — no Xcode, and
+`dl.google.com` is blocked, so no Android SDK.
+
+Nowhere, on any machine here:
+
+- **The Android app.** It needs the SDK, the NDK and `cargo-ndk`. It has never
+  been compiled; the Kotlin conformance suite has never run.
+- **The Windows app.** WinUI 3 needs Windows and MSBuild. Only its sync
+  provider is checkable, which `conformance/dotnet` does.
+- **The step-0 spike.** Real biometric hardware and a real camera on four
+  machines.
+- **Signing, notarisation and store submission.** The owner's credentials.
+
+A build is not a working app: nothing below the UI — Keychain, Keystore,
+DPAPI, Face ID, the camera, the app-switcher thumbnail — has been observed
+behaving as the security model assumes. Say which of the two you did.
 
 GitHub's runners can build all four platforms, which is why CI matters here
 more than usual. CI is deliberately manual-only — see `.github/workflows/`.

@@ -73,16 +73,19 @@ targets:
   # The cross-language conformance suite: conformance/vectors/*.json, run
   # against the real HTTPProvider.
   #
-  # Deliberately not part of either app target. It compiles the two Sync
-  # sources that import nothing but Foundation, so it needs no XCFramework, no
-  # signing identity and no device — which is what lets CI run it on a bare
-  # checkout before anything else has been built.
+  # Deliberately not part of either app target. It compiles only the Sync
+  # sources that depend on nothing but system frameworks, so it needs no
+  # XCFramework, no signing identity and no device — which is what lets CI run
+  # it on a bare checkout before anything else has been built.
   MFAConformance:
     type: bundle.unit-test
     platform: macOS
     sources:
       - path: Sources/Sync/SyncProvider.swift
       - path: Sources/Sync/HTTPProvider.swift
+      # HTTPProvider falls back to a content-derived revision when a target
+      # hands none out, so the suite cannot be built without this.
+      - path: Sources/Sync/Revision.swift
       - path: Tests/Conformance
     settings:
       base:

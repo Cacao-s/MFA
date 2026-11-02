@@ -48,14 +48,19 @@ appears in neither list.
 |---|---|---|---|
 | the server's own answers | `crates/mfa-sync-server/tests/conformance.rs` | anywhere | **yes** — 8 tests |
 | `windows/MFA/Sync/HttpProvider.cs` | [`dotnet/`](dotnet) | anywhere .NET runs | **yes** — 24 tests |
+| `apple/Sources/Sync/HTTPProvider.swift` | `apple/Tests/Conformance/` | needs macOS and Xcode | **yes** — 23 vectors |
 | `android/…/sync/HttpProvider.kt` | `android/app/src/test/…/SyncProviderConformanceTest.kt` | needs the Android SDK | **not yet** |
-| `apple/Sources/Sync/HTTPProvider.swift` | `apple/Tests/Conformance/` | needs macOS and Xcode | **not yet** |
 
-The last two were written against the code they test and have never been
-compiled: this repository's work happens in a Linux container with no Android
-SDK (`dl.google.com` is blocked) and no Swift toolchain. The CI workflow runs
-all four, so the first honest word on those two comes from CI, not from here.
-Expect to fix something in the Gradle and XcodeGen wiring on the first run.
+The Swift suite earned its keep the first time it ran: eight cases failed,
+all of them the same bug. `HTTPProvider` percent-encoded the GitLab file path
+with `.alphanumerics` as the allowed set, which also encodes `-` and `.`, so
+the name went out as `mfa%2Dsync%2Evault`. GitLab would have accepted it and
+nobody would ever have noticed, but Kotlin's `URLEncoder` and C#'s
+`EscapeDataString` both leave RFC 3986's unreserved characters alone. Three
+implementations agreed by accident and the fourth did not; now the rule is
+written down in all four.
+
+Only the Kotlin suite is still unrun, for want of an Android SDK.
 
 Both the Kotlin and the C# suites also assert something the vectors do not
 describe: that an error message never contains the token. The token travels in

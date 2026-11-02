@@ -67,13 +67,27 @@ struct AccountListView: View {
                         Button("Delete", role: .destructive) { pendingDeletion = account }
                     }
             }
-            // Dragging only makes sense while the list is unfiltered and in
-            // manual order; otherwise the drop position means nothing.
-            .onMove(perform: isReorderable ? model.move : nil)
+            .onMove(perform: reorder)
         }
         #if os(iOS)
         .listStyle(.insetGrouped)
         #endif
+    }
+
+    /// Dragging only makes sense while the list is unfiltered and in manual
+    /// order; otherwise the drop position means nothing, so `onMove` gets nil
+    /// and the rows stop offering a grab handle.
+    ///
+    /// Passing `model.move` straight in does not compile: the model is
+    /// `@MainActor`, so the method reference carries that isolation in its type
+    /// and will not convert to the plain closure `onMove` wants. SwiftUI only
+    /// ever calls this from the main thread, which is what makes assuming the
+    /// isolation here true rather than merely convenient.
+    private var reorder: ((IndexSet, Int) -> Void)? {
+        guard isReorderable else { return nil }
+        return { source, destination in
+            MainActor.assumeIsolated { model.move(from: source, to: destination) }
+        }
     }
 
     private var isReorderable: Bool {

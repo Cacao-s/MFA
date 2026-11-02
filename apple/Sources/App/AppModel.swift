@@ -383,7 +383,9 @@ final class AppModel: ObservableObject {
 
     func syncNow() async {
         guard let vault, let store, !isSyncing else { return }
-        guard let syncKey = try? KeychainStore.load(.sync), let syncKey else {
+        // `try?` already flattens the throw and the missing-key case into one
+        // Optional, so there is a single level to unwrap, not two.
+        guard let syncKey = try? KeychainStore.load(.sync) else {
             alert = Alert(title: "Sync is not set up",
                           message: "Add a sync target in Settings first.")
             return

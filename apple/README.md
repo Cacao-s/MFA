@@ -3,10 +3,10 @@
 SwiftUI, one codebase for both. The core is Rust, reached through the generated
 Swift bindings.
 
-> **None of this has been compiled.** It was written on a machine with no Xcode.
-> Expect to fix things on the first build — a missing import, a `Sendable`
-> complaint, a signing setting. The shape and the decisions are the useful part;
-> the compiler will have opinions about the rest.
+> **Both targets compile, with no warnings, and the conformance suite passes
+> (Xcode 27.2, macOS 26).** Nothing here has been *run* on a device, and no
+> Keychain, biometric or camera behaviour has been observed — that is still
+> step 0 (`spike/README.md`). A build is not a working app.
 
 ## Building
 
@@ -19,7 +19,19 @@ brew install xcodegen
 cd apple && xcodegen generate && open MFA.xcodeproj
 ```
 
-Two targets: `MFA-iOS` and `MFA-macOS`, sharing everything in
+The XCFramework's simulator slice carries both arm64 and x86_64. Xcode builds a
+simulator target for every architecture the Mac can run, so an arm64-only
+simulator library fails to link even on Apple silicon.
+
+Three targets: `MFA-iOS`, `MFA-macOS`, and `MFAConformance` — the last one
+compiles only the Sync sources that need no XCFramework, so it runs on a bare
+checkout:
+
+```sh
+cd apple && xcodebuild test -scheme MFAConformance -destination 'platform=macOS'
+```
+
+The two apps share everything in
 `Sources/{App,Platform,Sync,Views}` and differing only in `Sources/iOS` and
 `Sources/macOS`.
 

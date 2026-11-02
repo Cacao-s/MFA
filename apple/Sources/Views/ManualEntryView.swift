@@ -50,13 +50,16 @@ struct ManualEntryView: View {
                     Text("30 seconds").tag(30)
                     Text("60 seconds").tag(60)
                 }
-            } header: {
-                Text("Advanced")
-            } footer: {
+                // An expandable Section has no footer slot, so the caption that
+                // keeps people out of here lives in the content instead.
                 Text("""
                 Almost every site uses SHA1, 6 digits and 30 seconds. Only change \
                 these if the site told you to.
                 """)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            } header: {
+                Text("Advanced")
             }
         }
         .formStyle(.grouped)

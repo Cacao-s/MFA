@@ -25,9 +25,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Built by: cargo build -p mfa-ffi --release --target x86_64-pc-windows-msvc
-         The DLL has to sit next to the executable; LibraryImport looks it up
-         by name at first call. -->
+    <!-- Built by:
+           cargo build -p mfa-ffi --release --features qr-image \
+                       --target x86_64-pc-windows-msvc
+         qr-image included, or AddAccountDialog's "read a QR code from a
+         picture" finds no such method at run time. The DLL has to sit next to
+         the executable; LibraryImport looks it up by name at first call. -->
     <None Include="..\..\target\$(RustTarget)\release\mfa_ffi.dll"
           Condition="Exists('..\..\target\$(RustTarget)\release\mfa_ffi.dll')">
       <Link>mfa_ffi.dll</Link>

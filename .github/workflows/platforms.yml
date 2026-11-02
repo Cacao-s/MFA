@@ -67,10 +67,9 @@ jobs:
       - name: Rust targets for both platforms and the simulator
         run: |
           rustup target add aarch64-apple-darwin x86_64-apple-darwin \
-                            aarch64-apple-ios aarch64-apple-ios-sim
+                            aarch64-apple-ios aarch64-apple-ios-sim \
+                            x86_64-apple-ios
 
-      # Never run before now: this repository has no Mac. The script's own
-      # README says the first run should expect a path or two to need fixing.
       - name: Build the core as an XCFramework
         run: ./scripts/build-apple.sh --release
 
@@ -168,8 +167,13 @@ jobs:
 
       # The C# side loads this through the C ABI, so it is a plain cdylib
       # rather than anything Windows-specific.
+      #
+      # qr-image is not optional here even though the build succeeds without
+      # it: the bridge dispatches by method name, so a missing feature is not
+      # a link error but a "no such method" the first time someone adds an
+      # account from a picture. A green run here would hide it.
       - name: Build the FFI library
-        run: cargo build --release -p mfa-ffi
+        run: cargo build --release -p mfa-ffi --features qr-image
 
       - name: Put it where the app expects it
         shell: pwsh

@@ -27,7 +27,11 @@ struct HTTPProvider: SyncProvider {
     let flavour: Flavour
     let location: String
     let token: String
-    let session: URLSession = .shared
+    /// `var`, not `let`: Swift leaves a `let` with a default value out of the
+    /// memberwise initialiser, and the conformance suite reaches every branch
+    /// below by injecting a session whose responses are scripted from
+    /// `conformance/vectors/`. Nothing in the app passes it.
+    var session: URLSession = .shared
 
     func fetch(_ name: String) async throws -> (bytes: Data, revision: String)? {
         switch flavour {
@@ -235,8 +239,17 @@ struct HTTPProvider: SyncProvider {
         return (project, parts.count > 1 ? parts[1] : "main")
     }
 
+    /// Percent-encodes everything except RFC 3986's unreserved set, which is
+    /// what GitLab's file API wants: the path separator has to become `%2F`,
+    /// and nothing else may be touched.
+    ///
+    /// Not `.alphanumerics`: that also encodes `-` and `.`, so the file name
+    /// went out as `mfa%2Dsync%2Evault`. GitLab accepts it, but the other three
+    /// implementations do not send it, and `conformance/vectors` is the thing
+    /// they all have to agree with.
     private func encoded(_ value: String) -> String {
-        value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? value
+        let unreserved = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+        return value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
     }
 
     // MARK: - shared

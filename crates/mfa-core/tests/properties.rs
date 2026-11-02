@@ -436,9 +436,17 @@ proptest! {
 }
 
 proptest! {
-    // The merge laws build and serialise several documents per case, so they
-    // run fewer of them.
-    #![proptest_config(ProptestConfig { cases: 48, ..ProptestConfig::default() })]
+    // 48 was too few, and not by a little: the idempotence counterexample
+    // below needed a history where two rows become identical *and* the same
+    // id exists on both sides with the same timestamp, and it survived the
+    // whole project at 48. 512 finds it in seconds. Before trusting a change
+    // to the merge rule, crank it:
+    //
+    //   sed -i '' 's/cases: 512/cases: 20000/' crates/mfa-core/tests/properties.rs
+    //
+    // 20000 is 26 seconds, which is too slow for `make check` and cheap for
+    // the afternoon you spend changing `Vault::merge`.
+    #![proptest_config(ProptestConfig { cases: 512, ..ProptestConfig::default() })]
 
     /// `merge(a, b)` and `merge(b, a)` agree, byte for byte.
     ///
@@ -552,15 +560,36 @@ proptest! {
         prop_assert_eq!(canonical(&first.merged), canonical(&second.merged));
     }
 
-    /// Absorbing your own document is a no-op.
+    /// Absorbing your own document does exactly one thing: collapses the
+    /// duplicates it was already carrying.
+    ///
+    /// Not "changes nothing", which is what this used to claim. A vault built
+    /// by local edits alone can hold two identical accounts, because `update`
+    /// can make one row match another where `add` refuses to, and the collapse
+    /// only ever runs on a merge. So the no-op is the *second* self-merge, and
+    /// the first is a dedupe and nothing else — no entry added, updated or
+    /// deleted, no settings touched.
     #[test]
-    fn merging_a_copy_of_yourself_changes_nothing(history in ops(10)) {
+    fn merging_a_copy_of_yourself_only_collapses_duplicates(history in ops(10)) {
         let vault = built(&history);
+
+        let mut deduped_alone = vault.clone();
+        let collapsed = deduped_alone.dedupe();
+
         let mut merged_with_self = vault.clone();
         let report = merged_with_self.merge(vault.clone());
 
-        prop_assert_eq!(canonical(&vault), canonical(&merged_with_self));
-        prop_assert!(report.is_empty(), "reported {report:?}");
+        prop_assert_eq!(canonical(&deduped_alone), canonical(&merged_with_self));
+        prop_assert_eq!(report.deduped, collapsed.len());
+        prop_assert_eq!((report.added, report.updated, report.deleted), (0, 0, 0));
+        prop_assert!(!report.settings_updated);
+        prop_assert_eq!(report.changed, !collapsed.is_empty(), "reported {:?}", report);
+
+        // And then it is genuinely a no-op.
+        let mut again = merged_with_self.clone();
+        let second = again.merge(merged_with_self.clone());
+        prop_assert_eq!(canonical(&merged_with_self), canonical(&again));
+        prop_assert!(second.is_empty(), "the second self-merge reported {second:?}");
     }
 
     /// A delete is never undone by a device that had not heard about it.

@@ -157,9 +157,8 @@ pub fn reconcile_all(
         }
     }
 
-    let deduped = merged.dedupe();
-    let mut report = merged.report_against(local);
-    report.deduped = deduped;
+    let collapsed = merged.dedupe();
+    let report = merged.report_after_merge(local, &collapsed);
 
     // Seal once and hand the same bytes to every target that needs them: it is
     // the same message, so this is not nonce reuse, and it saves re-encrypting

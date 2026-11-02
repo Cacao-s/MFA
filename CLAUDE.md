@@ -92,9 +92,13 @@ yourself wanting to relax one, that is a conversation, not a refactor.
   arrives as a parameter. That is what makes the whole core testable on Linux
   and identical on four platforms.
 - **The merge rule is commutative and idempotent**, and settings merge with
-  the same tie-break as entries. It is *not* associative, deliberately —
-  `Vault::merge`'s doc comment explains why, and `sync::reconcile_all` is the
-  order-independent operation. `tests/properties.rs` holds the laws.
+  the same tie-break as entries. Associativity is *not* claimed; nothing needs
+  it, because `sync::reconcile_all` absorbs every target and collapses
+  duplicates once, and that is the order-independent operation. The laws are
+  in `tests/properties.rs`, and the idempotence one has already caught a real
+  bug that lived for weeks — if you change `Vault::merge` or `Vault::dedupe`,
+  crank the case count up before believing a green run. The comment above
+  `proptest_config` in that file says how.
 - **Every file header is inside the AEAD's associated data**, and every kind
   of file has magic of its own — vault, backup, sync, sync key. A file of one
   kind must never open as another.

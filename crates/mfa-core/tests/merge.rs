@@ -306,9 +306,11 @@ fn both_devices_keep_the_same_one() {
 }
 
 #[test]
-fn a_duplicate_arriving_from_elsewhere_is_not_reported_as_a_change() {
-    // The local document ends up exactly as it was, so a sync must not decide
-    // it has something new to publish.
+fn a_duplicate_arriving_from_elsewhere_settles_after_one_round() {
+    // The collapse leaves a tombstone, so the first merge does change the
+    // document and a sync will publish it once. What has to hold is that it
+    // stops there: the same copy arriving again changes nothing. Without
+    // that, two devices rewrite the file at each other for ever.
     let (left, right) = scanned_twice();
     // Make the local copy the one that survives.
     let (mut left, right) = if left.entries[0].id < right.entries[0].id {
@@ -316,14 +318,27 @@ fn a_duplicate_arriving_from_elsewhere_is_not_reported_as_a_change() {
     } else {
         (right, left)
     };
-    let before = left.to_bytes().unwrap();
+    let arrived = right.entries[0].id;
 
-    let report = left.merge(right);
+    let first = left.merge(right.clone());
 
-    assert_eq!(report.deduped, 1);
-    assert_eq!(report.added, 0);
-    assert!(report.is_empty(), "the document did not change");
-    assert_eq!(left.to_bytes().unwrap(), before);
+    assert_eq!(first.deduped, 1);
+    assert_eq!(first.added, 0, "a duplicate is not an addition");
+    assert_eq!(left.len(), 1, "one live row");
+    assert!(
+        left.entries
+            .iter()
+            .any(|entry| entry.id == arrived && entry.deleted),
+        "the collapsed id has to stay as a tombstone, or the next merge \
+         adopts it again"
+    );
+
+    let settled = left.to_bytes().unwrap();
+    let second = left.merge(right);
+
+    assert!(second.is_empty(), "a second merge found something to do");
+    assert_eq!(second.deduped, 0);
+    assert_eq!(left.to_bytes().unwrap(), settled);
 }
 
 #[test]
@@ -400,7 +415,7 @@ fn deduping_twice_changes_nothing() {
     left.merge(right);
     let once = left.to_bytes().unwrap();
 
-    assert_eq!(left.dedupe(), 0);
+    assert!(left.dedupe().is_empty());
     assert_eq!(left.to_bytes().unwrap(), once);
 }
 

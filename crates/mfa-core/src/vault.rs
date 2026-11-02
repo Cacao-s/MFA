@@ -481,24 +481,23 @@ impl Vault {
     /// nothing. Both are checked as properties over generated histories in
     /// `tests/properties.rs`.
     ///
-    /// **Not associative, and it does not need to be.** Collapsing duplicates
-    /// discards an entry outright rather than tombstoning it, so a duplicate
-    /// dropped by an early merge is no longer there to be weighed against a
-    /// copy that arrives later: `merge(merge(a, b), c)` can differ from
-    /// `merge(a, merge(b, c))` when the same account exists under more than
-    /// one id. A sync round never does that — [`crate::sync::reconcile_all`]
-    /// absorbs every target and collapses once, at the end, which *is*
-    /// order-independent, and that is the property spec §3 relies on. Code
-    /// that merges several documents in a row (importing two backup files,
-    /// say) should expect the result to depend on the order.
+    /// **Associativity is not claimed, and nothing here needs it.** A sync
+    /// round never nests merges: [`crate::sync::reconcile_all`] absorbs every
+    /// target and collapses duplicates once, at the end, and *that* is the
+    /// order-independent operation spec §3 relies on
+    /// (`a_sync_round_is_order_independent`). Code that merges several
+    /// documents in a row — importing two backup files, say — should not
+    /// assume the order is irrelevant without checking.
+    ///
+    /// Until the duplicate collapse started leaving a tombstone, it was
+    /// outright *not* associative, and for a reason worth remembering: a
+    /// discarded row takes the memory of its own id with it. See
+    /// [`Vault::dedupe`].
     pub fn merge(&mut self, other: Vault) -> MergeReport {
         let before = self.clone();
         self.absorb(other);
-        let deduped = self.dedupe();
-
-        let mut report = self.report_against(&before);
-        report.deduped = deduped;
-        report
+        let collapsed = self.dedupe();
+        self.report_after_merge(&before, &collapsed)
     }
 
     /// Takes in another copy's entries and settings, without deduping or
@@ -592,6 +591,35 @@ impl Vault {
         report
     }
 
+    /// The report a merge or a sync round hands back: the diff, except that a
+    /// duplicate collapsed by [`Vault::dedupe`] is counted as `deduped` and
+    /// not as a deletion.
+    ///
+    /// The two look identical in the document — a live row became a tombstone
+    /// — so [`Vault::report_against`] has no way to tell them apart. The
+    /// difference matters to whoever reads the message: "1 removed" about an
+    /// account that is still in the list under another id is alarming and
+    /// wrong.
+    pub fn report_after_merge(&self, before: &Vault, collapsed: &BTreeSet<Uuid>) -> MergeReport {
+        let mut report = self.report_against(before);
+
+        // Only the ones that were live here before the merge; a duplicate that
+        // arrived in this very merge was never counted as a deletion.
+        let folded_in = before
+            .entries
+            .iter()
+            .filter(|entry| !entry.deleted && collapsed.contains(&entry.id))
+            .count();
+        debug_assert!(report.deleted >= folded_in, "a collapse counted twice");
+        report.deleted = report.deleted.saturating_sub(folded_in);
+
+        report.deduped = collapsed.len();
+        // The tombstone a collapse leaves behind is a change to the document
+        // that the diff above cannot see either.
+        report.changed = report.changed || !collapsed.is_empty();
+        report
+    }
+
     /// Drops tombstones older than `retain_ms`, returning how many went.
     pub fn prune_tombstones(&mut self, now: Millis, retain_ms: Millis) -> usize {
         let before = self.entries.len();
@@ -600,8 +628,10 @@ impl Vault {
         before - self.entries.len()
     }
 
-    /// Collapses live entries that describe exactly the same account,
-    /// keeping the one with the smallest id. Returns how many went.
+    /// Collapses live entries that describe exactly the same account into the
+    /// one with the smallest id, tombstoning the rest. Returns their ids,
+    /// which [`Vault::report_after_merge`] needs in order not to report them
+    /// as deletions.
     ///
     /// Two devices scanning the same QR code each mint their own UUID, so a
     /// merge would otherwise leave the user with two identical rows and no
@@ -612,7 +642,17 @@ impl Vault {
     /// Only exact duplicates go. An entry that differs in any field — a note
     /// added on one device, a different period — is a different account here,
     /// and is left for the user to deal with.
-    pub fn dedupe(&mut self) -> usize {
+    ///
+    /// **A tombstone, not a removal, and the id and timestamp are left as
+    /// they were.** Dropping the row outright loses the fact that the id was
+    /// ever considered, and with it the tie-break that chose between two
+    /// versions of it. A copy of that entry arriving again — the same sync
+    /// target read twice — would then be taken for something new and adopted
+    /// wholesale, which is the version that *lost* the tie. Keeping the
+    /// timestamp is what makes the tombstone win the rematch: `supersedes`
+    /// gives a tie to the tombstone. Found by `merging_is_idempotent` in
+    /// `tests/properties.rs`, which is the only reason anyone knows.
+    pub fn dedupe(&mut self) -> BTreeSet<Uuid> {
         self.normalize();
 
         let mut seen: BTreeMap<[u8; 32], Uuid> = BTreeMap::new();
@@ -634,8 +674,13 @@ impl Vault {
             }
         }
 
-        self.entries.retain(|entry| !doomed.contains(&entry.id));
-        doomed.len()
+        for entry in &mut self.entries {
+            if doomed.contains(&entry.id) {
+                entry.deleted = true;
+                entry.account = None;
+            }
+        }
+        doomed
     }
 
     /// Restores the canonical entry order after a mutation.

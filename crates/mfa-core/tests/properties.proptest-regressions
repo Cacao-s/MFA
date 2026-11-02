@@ -8,7 +8,19 @@
 # Trimmed by hand once: the generated file also held seeds from two
 # properties that were themselves wrong (since corrected) and from one that
 # was removed, and a seed labelled with a case that was never a bug is worse
-# than no seed. The case below is a real one — two devices changing a setting
-# in the same millisecond used not to converge. There is a named regression
-# test for it too, in tests/merge.rs.
+# than no seed. All three below are real. In order:
+#
+# 1. Two devices changing a setting in the same millisecond used not to
+#    converge. Named regression test in tests/merge.rs.
+# 2. Merge was not idempotent. Collapsing a duplicate removed the row
+#    outright, so the second merge of the same copy met an id it had never
+#    heard of and adopted it wholesale — the version that had *lost* the
+#    tie-break on the first pass. The collapse now leaves a tombstone; see
+#    `Vault::dedupe`.
+# 3. Not a bug in the code: `merging_a_copy_of_yourself_changes_nothing`
+#    claimed more than was true, because a vault built by local edits alone
+#    can already hold duplicates. The property was rewritten to say what
+#    actually holds. Kept because the shape is a good exercise of it.
 cc 1326b8cc7cdedb1a0396100ae79e058ea18e44d72aa41176793544f4a0bcef4b # shrinks to shared = [], left = [ClipboardSecs(0)], right = [ClipboardSecs(1)]
+cc 5895594f678f93bfcf8bb479fedf37ce6084a7d4b6e846365945f18f5f45517f # shrinks to shared = [Add(181), ClipboardSecs(89), Note(150, 0), Add(77), Reorder(131)], left = [Note(74, 1)], right = [Note(143, 1)]
+cc abfc65f21358d533024b0ea197e2ffade875645173bfae6aa5df6643871ba840 # shrinks to history = [Add(88), Note(0, 1), Add(56), Add(1), Note(82, 1)]

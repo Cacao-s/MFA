@@ -1,4 +1,8 @@
-import AVFoundation
+// `@preconcurrency`: AVFoundation is not audited for Sendable, and
+// AVCaptureSession in particular is documented as safe to drive from one queue
+// at a time rather than as `Sendable`. Without this the compiler cannot tell
+// the difference between that and a genuine race.
+@preconcurrency import AVFoundation
 import SwiftUI
 
 /// The camera scanner (spec §1).
@@ -92,7 +96,11 @@ private struct CameraPreview: UIViewControllerRepresentable {
     }
 }
 
-final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
+/// `@preconcurrency` on the conformance: `UIViewController` is `@MainActor`,
+/// the delegate protocol is not, and the two only agree because the output is
+/// given `queue: .main` below. That is the fact the annotation stands on — if
+/// the queue ever changes, this has to go and the callback has to hop.
+final class ScannerController: UIViewController, @preconcurrency AVCaptureMetadataOutputObjectsDelegate {
     var onPayload: ((String) -> Void)?
 
     private let session = AVCaptureSession()

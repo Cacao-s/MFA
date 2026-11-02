@@ -9,6 +9,12 @@ import Foundation
 /// keeps us out of the screen-recording permission prompt.
 enum ScreenQR {
     /// Asks for an image file and returns its bytes.
+    ///
+    /// `@MainActor` because `NSOpenPanel` is: running a modal off the main
+    /// thread is undefined, and the declaration was quietly claiming it was
+    /// allowed. Both call sites are button actions, so this costs nothing and
+    /// states what was already true.
+    @MainActor
     static func pickImage() -> Data? {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.png, .jpeg, .heic, .tiff, .gif, .bmp]
@@ -23,6 +29,10 @@ enum ScreenQR {
     /// Lets the user drag a rectangle on screen and returns the grab.
     ///
     /// Returns `nil` if they press Escape.
+    ///
+    /// Deliberately *not* `@MainActor`, unlike `pickImage`: it touches no
+    /// AppKit, and it blocks until the user finishes dragging. On the main
+    /// thread that would freeze the window it is being dragged over.
     static func captureScreenArea() -> Data? {
         let destination = FileManager.default.temporaryDirectory
             .appendingPathComponent("mfa-grab-\(UUID().uuidString).png")

@@ -21,10 +21,11 @@ settings:
   base:
     DEVELOPMENT_TEAM: NKJSLB6HBR
     SWIFT_VERSION: "5.9"
-    # Deliberately not `complete`: none of this has been through a compiler
-    # yet, and strict concurrency diagnostics are the kind of thing to tighten
-    # once it builds rather than to guess at. Raise it when it is green.
-    SWIFT_STRICT_CONCURRENCY: minimal
+    # `complete` costs nothing here and the one thing it caught was real:
+    # ScreenQR.pickImage ran an NSOpenPanel modal from a nonisolated context.
+    # An app that holds secrets and syncs in the background is the wrong place
+    # to leave actor isolation unchecked.
+    SWIFT_STRICT_CONCURRENCY: complete
 
 packages: {}
 
